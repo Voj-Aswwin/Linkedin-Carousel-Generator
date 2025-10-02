@@ -10,7 +10,7 @@ export const generateHeaderSlide = async (userContent) => {
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-flash",
       generationConfig: {
-        maxOutputTokens: 8192,  // Maximum output tokens
+        maxOutputTokens: 16384,  // Increased to handle more slides
         temperature: 0.7,       // Balanced creativity
         topP: 0.8,             // Nucleus sampling
         topK: 40               // Top-k sampling
@@ -143,7 +143,7 @@ export const generateHeaderSlideAdvanced = async (userContent, options = {}) => 
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-flash",
       generationConfig: {
-        maxOutputTokens: 8192,  // Maximum output tokens
+        maxOutputTokens: 16384,  // Increased to handle more slides
         temperature: options.temperature || 0.7,
         topP: options.topP || 0.8,
         topK: options.topK || 40
@@ -293,13 +293,39 @@ export const generateHeaderSlideAdvanced = async (userContent, options = {}) => 
 }
 
 // New function to generate complete carousel with multiple slides
+export const generateIconForSlide = async (slideTitle, slideContent) => {
+  try {
+    const prompt = `Generate a simple, professional icon that represents the following slide content:
+
+Title: ${slideTitle}
+Content: ${slideContent}
+
+Requirements:
+- Simple, clean design
+- Professional appearance
+- Suitable for LinkedIn carousel
+- Minimalist style
+- Should be relevant to the content theme
+- Use modern, business-appropriate imagery
+
+Create an SVG icon that would work well in the top-right corner of a slide.`
+
+    const result = await imageModel.generateContent(prompt)
+    const response = await result.response
+    return response.text()
+  } catch (error) {
+    console.error('Error generating icon:', error)
+    return null
+  }
+}
+
 export const generateCarouselSlides = async (userContent) => {
   try {
     // Use Gemini 2.5 Flash with maximum token configuration
     const model = genAI.getGenerativeModel({ 
       model: "gemini-2.5-flash",
       generationConfig: {
-        maxOutputTokens: 8192,  // Maximum output tokens
+        maxOutputTokens: 16384,  // Increased to handle more slides
         temperature: 0.7,       // Balanced creativity
         topP: 0.8,             // Nucleus sampling
         topK: 40               // Top-k sampling
@@ -326,7 +352,7 @@ export const generateCarouselSlides = async (userContent) => {
     
     // Enhanced prompt for generating a complete carousel
     const prompt = `
-    You are an expert LinkedIn carousel designer and content strategist. Create a complete LinkedIn carousel with multiple slides based on this content: "${userContent}"
+    You are an expert LinkedIn carousel designer and content strategist. Create a complete LinkedIn carousel with as many slides as needed to comprehensively cover ALL the content provided. Do not limit the number of slides - use as many as necessary to ensure every important point is included. Based on this content: "${userContent}"
     
     Generate a JSON object with the following structure:
     {
@@ -395,24 +421,63 @@ export const generateCarouselSlides = async (userContent) => {
           "accentColor": "#hexcolor",
           "layout": "centered" | "left-aligned" | "right-aligned"
         }
-      ]
+      ],
+      "endSlide": {
+        "title": "Call-to-action title (e.g., 'Ready to Get Started?')",
+        "subtitle": "Compelling CTA message or contact information",
+        "ctaText": "Specific action text (e.g., 'Contact Me', 'Learn More', 'Get Started')",
+        "background": {
+          "type": "gradient" | "solid" | "pattern",
+          "color1": "#hexcolor (same as info slides)",
+          "color2": "#hexcolor (same as info slides)",
+          "pattern": "dots" | "lines" | "geometric" | "none"
+        },
+        "titleStyle": {
+          "fontSize": 60-80,
+          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+          "color": "#hexcolor",
+          "fontWeight": "bold" | "normal"
+        },
+        "subtitleStyle": {
+          "fontSize": 30-40,
+          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+          "color": "#hexcolor",
+          "fontWeight": "normal" | "bold"
+        },
+        "ctaStyle": {
+          "fontSize": 35-45,
+          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+          "color": "#hexcolor",
+          "fontWeight": "bold"
+        },
+        "accentColor": "#hexcolor (same as other slides)",
+        "layout": "centered" | "left-aligned" | "right-aligned"
+      }
     }
     
     Guidelines:
-    1. Break the content into 2-4 logical information slides
-    2. Each info slide should have 1-3 subheadings
+    1. Break the content into as many information slides as needed to cover ALL the content comprehensively
+    2. Each info slide should have exactly 1-2 subheadings (maximum 2 to prevent overcrowding)
     3. Each subheading should have 1-2 key points (2-3 lines each)
     4. Use EXACTLY the same background colors for ALL info slides (color1 and color2)
     5. Use the same accent color for ALL info slides
-    6. Make each slide visually distinct but cohesive
-    7. Ensure mobile-first design for LinkedIn
-    8. Use professional, engaging typography
-    9. Create visual hierarchy with proper spacing
-    10. Include relevant statistics or data points where applicable
-    11. Make content scannable and LinkedIn-optimized
-    12. IMPORTANT: All info slides must have identical background colors for consistency
+    6. IMPORTANT: All info slides must use the SAME color palette as the header slide for consistency
+    7. Maintain visual coherence across all slides while keeping info slides distinct from header
+    8. Make each slide visually distinct but cohesive
+    9. Ensure mobile-first design for LinkedIn
+    10. Use professional, engaging typography
+    11. Create visual hierarchy with proper spacing
+    12. Include relevant statistics or data points where applicable
+    13. Make content scannable and LinkedIn-optimized
+    14. IMPORTANT: All info slides must have identical background colors for consistency
+    15. CRITICAL: Generate as many slides as necessary to cover ALL user content - do not limit to 2-4 slides
+    16. Ensure every important point from the user's content is included across the slides
+    17. If content is extensive, create more slides rather than cramming content into fewer slides
+    18. CRITICAL: Always create a final "end slide" with a compelling call-to-action (CTA)
+    19. The end slide should include: a strong CTA message, contact information, or next steps
+    20. End slide should use the same color theme as other slides but with a distinct "conclusion" feel
     
-    Create a complete, professional LinkedIn carousel that tells a compelling story.
+    Create a complete, professional LinkedIn carousel that tells a compelling story and covers ALL the user's content comprehensively. Do not leave out any important points - create additional slides if needed to ensure complete coverage. ALWAYS end with a call-to-action slide.
     `
 
     const result = await model.generateContent(prompt)

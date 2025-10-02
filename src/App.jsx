@@ -1,15 +1,20 @@
 import React, { useState } from 'react'
-import { Sparkles, FileText, Download, Wand2 } from 'lucide-react'
+import { Sparkles, FileText, Wand2, Download } from 'lucide-react'
 import TextInput from './components/TextInput'
 import GenerateButton from './components/GenerateButton'
 import CanvasEditor from './components/CanvasEditor'
 import { generateCarouselSlides } from './services/geminiService'
+import { pdfExportService } from './services/pdfExportService'
 
 function App() {
   const [textInput, setTextInput] = useState('')
+  const [headerPicture, setHeaderPicture] = useState(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [carouselData, setCarouselData] = useState(null)
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
+  const [isExportingPDF, setIsExportingPDF] = useState(false)
+  const [usePhoneFrame, setUsePhoneFrame] = useState(false)
+  const [phoneFramePhotos, setPhoneFramePhotos] = useState([])
 
   const handleGenerate = async () => {
     if (!textInput.trim()) return
@@ -20,11 +25,65 @@ function App() {
       setCarouselData(generatedCarousel)
       setCurrentSlideIndex(0) // Start with header slide
       
-      // Make carousel data available globally for PDF export
-      window.carouselData = generatedCarousel
     } catch (error) {
       console.error('Error generating carousel:', error)
-      alert('Error generating carousel. Please try again.')
+      // Create a default error slide when Gemini fails
+      const errorCarousel = {
+        headerSlide: {
+          title: "Oops! Something went wrong",
+          subtitle: "We encountered an issue generating your carousel. Please try again or contact support.",
+          background: {
+            type: "gradient",
+            color1: "#ff6b6b",
+            color2: "#ee5a52"
+          },
+          titleStyle: {
+            fontSize: 60,
+            fontFamily: "Arial",
+            color: "#ffffff",
+            fontWeight: "bold"
+          },
+          subtitleStyle: {
+            fontSize: 32,
+            fontFamily: "Arial", 
+            color: "#ffffff",
+            fontWeight: "normal"
+          },
+          accentColor: "#ffffff"
+        },
+        infoSlides: [],
+        endSlide: {
+          title: "Try Again",
+          subtitle: "Please check your content and try generating again.",
+          ctaText: "Contact Support",
+          background: {
+            type: "gradient",
+            color1: "#ff6b6b",
+            color2: "#ee5a52"
+          },
+          titleStyle: {
+            fontSize: 60,
+            fontFamily: "Arial",
+            color: "#ffffff",
+            fontWeight: "bold"
+          },
+          subtitleStyle: {
+            fontSize: 32,
+            fontFamily: "Arial",
+            color: "#ffffff", 
+            fontWeight: "normal"
+          },
+          ctaStyle: {
+            fontSize: 40,
+            fontFamily: "Arial",
+            color: "#ffffff",
+            fontWeight: "bold"
+          },
+          accentColor: "#ffffff"
+        }
+      }
+      setCarouselData(errorCarousel)
+      setCurrentSlideIndex(0)
     } finally {
       setIsGenerating(false)
     }
@@ -33,12 +92,42 @@ function App() {
   const getCurrentSlide = () => {
     if (!carouselData) return null
     if (currentSlideIndex === 0) return carouselData.headerSlide
+    if (currentSlideIndex === carouselData.infoSlides.length + 1) return carouselData.endSlide
     return carouselData.infoSlides[currentSlideIndex - 1]
   }
 
   const getTotalSlides = () => {
     if (!carouselData) return 0
-    return 1 + carouselData.infoSlides.length // Header + info slides
+    return 2 + carouselData.infoSlides.length // Header + info slides + end slide
+  }
+
+  const handleExportPDF = async () => {
+    if (!carouselData) return
+    
+    setIsExportingPDF(true)
+    try {
+      // Reset the PDF service
+      pdfExportService.reset()
+      
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-')
+      const filename = `linkedin-carousel-${timestamp}.pdf`
+      
+      console.log('Starting PDF generation...')
+      
+      // Generate the PDF with all slides
+      await pdfExportService.generateCarouselPDF(carouselData, headerPicture, usePhoneFrame, phoneFramePhotos)
+      
+      // Download the PDF
+      pdfExportService.downloadPDF(filename)
+      
+      console.log('PDF exported successfully!')
+    } catch (error) {
+      console.error('Error exporting PDF:', error)
+      alert('Failed to export PDF. Please try again.')
+    } finally {
+      setIsExportingPDF(false)
+    }
   }
 
   return (
@@ -74,6 +163,81 @@ function App() {
                 onChange={setTextInput}
                 placeholder="Paste your LinkedIn post, blog content, or any text you want to convert into a carousel..."
               />
+              
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Header Slide Picture (Optional)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files[0]
+                    if (file) {
+                      const reader = new FileReader()
+                      reader.onload = (e) => setHeaderPicture(e.target.result)
+                      reader.readAsDataURL(file)
+                    }
+                  }}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                />
+              </div>
+
+              {/* Phone Frame Option */}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="phone-frame"
+                    checked={usePhoneFrame}
+                    onChange={(e) => setUsePhoneFrame(e.target.checked)}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="phone-frame" className="text-sm font-medium text-gray-700">
+                    Include iPhone Frame
+                  </label>
+                </div>
+                
+                {usePhoneFrame && (
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Upload Photos for Phone Frame
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files)
+                        const readers = files.map(file => {
+                          return new Promise((resolve) => {
+                            const reader = new FileReader()
+                            reader.onload = (e) => resolve(e.target.result)
+                            reader.readAsDataURL(file)
+                          })
+                        })
+                        Promise.all(readers).then(results => {
+                          setPhoneFramePhotos(prev => [...prev, ...results])
+                        })
+                      }}
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                    />
+                    {phoneFramePhotos.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs text-gray-500 mb-2">
+                          {phoneFramePhotos.length} photo(s) uploaded
+                        </p>
+                        <button
+                          onClick={() => setPhoneFramePhotos([])}
+                          className="text-xs text-red-600 hover:text-red-800"
+                        >
+                          Clear all photos
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-sm text-gray-500">
@@ -157,12 +321,27 @@ function App() {
                     >
                       Next →
                     </button>
+                    
+                    {/* PDF Export Button */}
+                    <button
+                      onClick={handleExportPDF}
+                      disabled={isExportingPDF}
+                      className="flex items-center space-x-1 px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>{isExportingPDF ? 'Exporting...' : 'Export PDF'}</span>
+                    </button>
                   </div>
                 </div>
 
                 <CanvasEditor 
                   slideData={getCurrentSlide()} 
-                  slideType={currentSlideIndex === 0 ? 'header' : 'info'}
+                  slideType={currentSlideIndex === 0 ? 'header' : (currentSlideIndex === carouselData.infoSlides.length + 1 ? 'end' : 'info')}
+                  currentSlideIndex={currentSlideIndex}
+                  totalSlides={getTotalSlides()}
+                  headerPicture={headerPicture}
+                  usePhoneFrame={usePhoneFrame}
+                  phoneFramePhotos={phoneFramePhotos}
                   onSlideUpdate={(data) => console.log('Slide updated:', data)}
                 />
               </div>
