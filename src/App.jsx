@@ -1,20 +1,50 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { Sparkles, FileText, Wand2, Download } from 'lucide-react'
 import TextInput from './components/TextInput'
 import GenerateButton from './components/GenerateButton'
 import CanvasEditor from './components/CanvasEditor'
+import ToolPanel from './components/ToolPanel'
+import PropertiesPanel from './components/PropertiesPanel'
 import { generateCarouselSlides } from './services/geminiService'
 import { pdfExportService } from './services/pdfExportService'
 
 function App() {
+  // Default blank slide for initial state
+  const blankSlide = {
+    title: "",
+    subtitle: "",
+    background: {
+      type: "solid",
+      color1: "#ffffff",
+      color2: "#ffffff"
+    },
+    titleStyle: {
+      fontSize: 48,
+      fontFamily: "Arial",
+      color: "#000000",
+      fontWeight: "bold"
+    },
+    subtitleStyle: {
+      fontSize: 24,
+      fontFamily: "Arial",
+      color: "#333333",
+      fontWeight: "normal"
+    },
+    accentColor: "#007bff"
+  }
+
   const [textInput, setTextInput] = useState('')
   const [headerPicture, setHeaderPicture] = useState(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [carouselData, setCarouselData] = useState(null)
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
   const [isExportingPDF, setIsExportingPDF] = useState(false)
-  const [usePhoneFrame, setUsePhoneFrame] = useState(false)
+  const [selectedObject, setSelectedObject] = useState(null)
+  const [undoHistory, setUndoHistory] = useState([])
+  const [redoHistory, setRedoHistory] = useState([])
   const [phoneFramePhotos, setPhoneFramePhotos] = useState([])
+  const [selectedPhonePhoto, setSelectedPhonePhoto] = useState(0)
+  const canvasEditorRef = useRef(null)
 
   const handleGenerate = async () => {
     if (!textInput.trim()) return
@@ -90,15 +120,58 @@ function App() {
   }
 
   const getCurrentSlide = () => {
-    if (!carouselData) return null
+    if (!carouselData) return blankSlide
+    
+    // Header slide
     if (currentSlideIndex === 0) return carouselData.headerSlide
-    if (currentSlideIndex === carouselData.infoSlides.length + 1) return carouselData.endSlide
-    return carouselData.infoSlides[currentSlideIndex - 1]
+    
+    // Calculate middle position for image slide
+    const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage
+    const infoSlidesCount = carouselData.infoSlides.length
+    const imageSlidePosition = hasImageSlide ? Math.ceil(infoSlidesCount / 2) + 1 : -1
+    
+    // Image slide (in the middle)
+    if (hasImageSlide && currentSlideIndex === imageSlidePosition) {
+      return carouselData.imageSlide
+    }
+    
+    // Info slides (split around image slide)
+    if (currentSlideIndex < imageSlidePosition || !hasImageSlide) {
+      // Before image slide or no image slide
+      const infoIndex = currentSlideIndex - 1
+      if (infoIndex < infoSlidesCount) {
+        return carouselData.infoSlides[infoIndex]
+      }
+    } else if (hasImageSlide && currentSlideIndex > imageSlidePosition) {
+      // After image slide
+      const infoIndex = currentSlideIndex - 2 // Account for header and image slide
+      if (infoIndex < infoSlidesCount) {
+        return carouselData.infoSlides[infoIndex]
+      }
+    }
+    
+    // End slide
+    return carouselData.endSlide
   }
 
   const getTotalSlides = () => {
-    if (!carouselData) return 0
-    return 2 + carouselData.infoSlides.length // Header + info slides + end slide
+    if (!carouselData) return 1
+    const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage
+    // Header + info slides + image slide (if exists) + end slide
+    return 2 + carouselData.infoSlides.length + (hasImageSlide ? 1 : 0)
+  }
+  
+  const getSlideType = () => {
+    if (!carouselData) return 'header'
+    if (currentSlideIndex === 0) return 'header'
+    
+    const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage
+    const infoSlidesCount = carouselData.infoSlides.length
+    const imageSlidePosition = hasImageSlide ? Math.ceil(infoSlidesCount / 2) + 1 : -1
+    
+    if (hasImageSlide && currentSlideIndex === imageSlidePosition) return 'image'
+    if (currentSlideIndex === getTotalSlides() - 1) return 'end'
+    return 'info'
   }
 
   const handleExportPDF = async () => {
@@ -115,11 +188,17 @@ function App() {
       
       console.log('Starting PDF generation...')
       
-      // Generate the PDF with all slides
-      await pdfExportService.generateCarouselPDF(carouselData, headerPicture, usePhoneFrame, phoneFramePhotos)
+      // Get current canvas state from CanvasEditor
+      const currentCanvasState = canvasEditorRef.current?.getCurrentCanvasState?.()
       
-      // Download the PDF
-      pdfExportService.downloadPDF(filename)
+      if (currentCanvasState) {
+        // Use current canvas state for PDF generation
+        await pdfExportService.generatePDFFromCanvasState(currentCanvasState, filename)
+      } else {
+        // Fallback to original method
+        await pdfExportService.generateCarouselPDF(carouselData, headerPicture)
+        pdfExportService.downloadPDF(filename)
+      }
       
       console.log('PDF exported successfully!')
     } catch (error) {
@@ -148,14 +227,24 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-          {/* Left Column - Input Section */}
-          <div className="space-y-6">
+      <main className="w-full px-2 sm:px-4 lg:px-6 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-20 gap-4">
+          {/* Left Column - User Input Panel */}
+          <div className="lg:col-span-3 space-y-3">
             <div className="card">
-              <div className="flex items-center space-x-2 mb-4">
+              <div className="flex items-center space-x-2 mb-3">
                 <FileText className="h-5 w-5 text-primary-600" />
-                <h2 className="text-lg font-semibold text-gray-900">Input Your Content</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Your LinkedIn Carousel</h2>
+              </div>
+              
+              {/* Tabs */}
+              <div className="flex space-x-1 mb-3">
+                <button className="px-3 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded-lg">
+                  Configuration
+                </button>
+                <button className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+                  Current Slide
+                </button>
               </div>
               
               <TextInput 
@@ -183,61 +272,6 @@ function App() {
                 />
               </div>
 
-              {/* Phone Frame Option */}
-              <div className="space-y-3">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="phone-frame"
-                    checked={usePhoneFrame}
-                    onChange={(e) => setUsePhoneFrame(e.target.checked)}
-                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="phone-frame" className="text-sm font-medium text-gray-700">
-                    Include iPhone Frame
-                  </label>
-                </div>
-                
-                {usePhoneFrame && (
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700">
-                      Upload Photos for Phone Frame
-                    </label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files)
-                        const readers = files.map(file => {
-                          return new Promise((resolve) => {
-                            const reader = new FileReader()
-                            reader.onload = (e) => resolve(e.target.result)
-                            reader.readAsDataURL(file)
-                          })
-                        })
-                        Promise.all(readers).then(results => {
-                          setPhoneFramePhotos(prev => [...prev, ...results])
-                        })
-                      }}
-                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
-                    />
-                    {phoneFramePhotos.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-xs text-gray-500 mb-2">
-                          {phoneFramePhotos.length} photo(s) uploaded
-                        </p>
-                        <button
-                          onClick={() => setPhoneFramePhotos([])}
-                          className="text-xs text-red-600 hover:text-red-800"
-                        >
-                          Clear all photos
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
               
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-sm text-gray-500">
@@ -248,6 +282,29 @@ function App() {
                   isLoading={isGenerating}
                   disabled={!textInput.trim()}
                 />
+              </div>
+
+              {/* Color Palette */}
+              <div className="mt-6">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">Color Palette</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex space-x-1">
+                    <div className="w-6 h-6 bg-blue-500 rounded"></div>
+                    <div className="w-6 h-6 bg-purple-500 rounded"></div>
+                  </div>
+                  <div className="flex space-x-1">
+                    <div className="w-6 h-6 bg-pink-500 rounded"></div>
+                    <div className="w-6 h-6 bg-purple-800 rounded"></div>
+                  </div>
+                  <div className="flex space-x-1">
+                    <div className="w-6 h-6 bg-green-600 rounded"></div>
+                    <div className="w-6 h-6 bg-green-300 rounded"></div>
+                  </div>
+                  <div className="flex space-x-1">
+                    <div className="w-6 h-6 bg-orange-500 rounded"></div>
+                    <div className="w-6 h-6 bg-red-500 rounded"></div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -289,20 +346,20 @@ function App() {
             )}
           </div>
 
-          {/* Right Column - Canvas Editor */}
-          <div className="space-y-6">
-            {carouselData ? (
-              <div className="space-y-6">
-                {/* Navigation Header */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Wand2 className="h-5 w-5 text-primary-600" />
-                    <h2 className="text-xl font-semibold text-gray-900">
-                      {currentSlideIndex === 0 ? 'Header Slide' : `Slide ${currentSlideIndex}`}
-                    </h2>
-                  </div>
-                  
-                  {/* Navigation Controls */}
+          {/* Middle Column - Canvas */}
+          <div className="lg:col-span-10 space-y-3">
+            <div className="space-y-4">
+              {/* Navigation Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Wand2 className="h-5 w-5 text-primary-600" />
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    {!carouselData ? 'Blank Canvas' : (currentSlideIndex === 0 ? 'Header Slide' : `Slide ${currentSlideIndex}`)}
+                  </h2>
+                </div>
+                
+                {/* Navigation Controls */}
+                {carouselData && (
                   <div className="flex items-center space-x-2">
                     <button
                       onClick={() => setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))}
@@ -311,9 +368,17 @@ function App() {
                     >
                       ← Previous
                     </button>
-                    <span className="text-sm text-gray-500">
-                      {currentSlideIndex + 1} of {getTotalSlides()}
-                    </span>
+                    <button className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
+                      +
+                    </button>
+                    <button
+                      onClick={handleExportPDF}
+                      disabled={isExportingPDF}
+                      className="flex items-center space-x-1 px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Download className="h-4 w-4" />
+                      <span>Download</span>
+                    </button>
                     <button
                       onClick={() => setCurrentSlideIndex(Math.min(getTotalSlides() - 1, currentSlideIndex + 1))}
                       disabled={currentSlideIndex === getTotalSlides() - 1}
@@ -321,50 +386,147 @@ function App() {
                     >
                       Next →
                     </button>
-                    
-                    {/* PDF Export Button */}
-                    <button
-                      onClick={handleExportPDF}
-                      disabled={isExportingPDF}
-                      className="flex items-center space-x-1 px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Download className="h-4 w-4" />
-                      <span>{isExportingPDF ? 'Exporting...' : 'Export PDF'}</span>
-                    </button>
                   </div>
-                </div>
-
-                <CanvasEditor 
-                  slideData={getCurrentSlide()} 
-                  slideType={currentSlideIndex === 0 ? 'header' : (currentSlideIndex === carouselData.infoSlides.length + 1 ? 'end' : 'info')}
-                  currentSlideIndex={currentSlideIndex}
-                  totalSlides={getTotalSlides()}
-                  headerPicture={headerPicture}
-                  usePhoneFrame={usePhoneFrame}
-                  phoneFramePhotos={phoneFramePhotos}
-                  onSlideUpdate={(data) => console.log('Slide updated:', data)}
-                />
+                )}
               </div>
-            ) : (
-              <div className="card">
-                <div className="flex items-center space-x-2 mb-4">
-                  <Wand2 className="h-5 w-5 text-primary-600" />
-                  <h2 className="text-lg font-semibold text-gray-900">AI Generation</h2>
-                </div>
-                
-                <div className="bg-gray-100 rounded-lg p-8 text-center">
-                  <div className="text-gray-400 mb-4">
-                    <Wand2 className="h-12 w-12 mx-auto" />
-                  </div>
-                  <p className="text-gray-500">
-                    AI will analyze your content and create a stunning header slide
-                  </p>
-                  <p className="text-sm text-gray-400 mt-2">
-                    Enter text and click "Generate Carousel" to get started
-                  </p>
+
+              <CanvasEditor 
+                ref={canvasEditorRef}
+                slideData={getCurrentSlide()} 
+                slideType={getSlideType()}
+                currentSlideIndex={currentSlideIndex}
+                totalSlides={getTotalSlides()}
+                headerPicture={headerPicture}
+                onSlideUpdate={(data) => console.log('Slide updated:', data)}
+                onSelectedObjectChange={setSelectedObject}
+                onUndoHistoryChange={setUndoHistory}
+                onRedoHistoryChange={setRedoHistory}
+                onPhoneFramePhotosChange={setPhoneFramePhotos}
+                onSelectedPhonePhotoChange={setSelectedPhonePhoto}
+              />
+            </div>
+
+            {/* Thumbnails Section */}
+            {carouselData && (
+              <div className="mt-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Thumbnails</h3>
+                <div className="flex space-x-2 overflow-x-auto pb-2">
+                  {Array.from({ length: getTotalSlides() }, (_, index) => {
+                    let slideData = null;
+                    
+                    // Determine which slide data to use based on index
+                    if (index === 0) {
+                      slideData = carouselData.headerSlide;
+                    } else if (index === getTotalSlides() - 1) {
+                      slideData = carouselData.endSlide;
+                    } else {
+                      // For middle slides, check if it's an image slide
+                      const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage;
+                      const infoSlidesCount = carouselData.infoSlides.length;
+                      const imageSlidePosition = hasImageSlide ? Math.ceil(infoSlidesCount / 2) + 1 : -1;
+                      
+                      if (hasImageSlide && index === imageSlidePosition) {
+                        slideData = carouselData.imageSlide;
+                      } else if (index < imageSlidePosition || !hasImageSlide) {
+                        // Before image slide or no image slide
+                        const infoIndex = index - 1;
+                        slideData = carouselData.infoSlides[infoIndex] || carouselData.endSlide;
+                      } else {
+                        // After image slide
+                        const infoIndex = index - 2; // Account for header and image slide
+                        slideData = carouselData.infoSlides[infoIndex] || carouselData.endSlide;
+                      }
+                    }
+                    
+                    // Ensure we have valid slide data
+                    if (!slideData) {
+                      slideData = { title: `Slide ${index + 1}` };
+                    }
+                    
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentSlideIndex(index)}
+                        className={`flex-shrink-0 w-24 h-16 rounded-lg border-2 overflow-hidden transition-all ${
+                          index === currentSlideIndex 
+                            ? 'border-blue-500 shadow-lg' 
+                            : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                          <div className="text-center p-1">
+                            <div className="text-xs font-semibold text-gray-800 truncate">
+                              {slideData.title?.substring(0, 20) || `Slide ${index + 1}`}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Right Column - Tool Panel */}
+          <div className="lg:col-span-3">
+            <div className="card h-[calc(100vh-160px)] overflow-y-auto">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 sticky top-0 bg-white z-10 pb-2">TOOLS & ELEMENTS</h3>
+              <ToolPanel 
+              onAddText={() => {
+                canvasEditorRef.current?.addText()
+              }}
+              onAddShape={(type) => {
+                canvasEditorRef.current?.addShape(type)
+              }}
+              onImageUpload={(event) => {
+                canvasEditorRef.current?.handleImageUpload(event)
+              }}
+              onAddPhoneFrame={() => {
+                canvasEditorRef.current?.addPhoneFrame()
+              }}
+              onPhoneFramePhotoUpload={(event) => {
+                canvasEditorRef.current?.handlePhoneFramePhotoUpload(event)
+              }}
+              phoneFramePhotos={phoneFramePhotos}
+              selectedPhonePhoto={selectedPhonePhoto}
+              onSetSelectedPhonePhoto={setSelectedPhonePhoto}
+              onClearPhonePhotos={() => setPhoneFramePhotos([])}
+              onUndo={() => {
+                canvasEditorRef.current?.handleUndo()
+              }}
+              onRedo={() => {
+                canvasEditorRef.current?.handleRedo()
+              }}
+              onResetCanvas={() => {
+                canvasEditorRef.current?.resetCanvas()
+              }}
+              undoHistory={undoHistory}
+              redoHistory={redoHistory}
+            />
+            </div>
+          </div>
+
+          {/* Properties Column - Dedicated Properties Panel */}
+          <div className="lg:col-span-4">
+            <PropertiesPanel 
+              selectedObject={selectedObject}
+              onUpdateSelectedObject={(property, value) => {
+                canvasEditorRef.current?.updateSelectedObject(property, value)
+              }}
+              onDeleteSelected={() => {
+                canvasEditorRef.current?.handleDeleteSelected()
+              }}
+              onApplyCharacterStyle={(styleType, value) => {
+                canvasEditorRef.current?.applyCharacterStyle(styleType, value)
+              }}
+              onToggleTextHighlight={(obj, color) => {
+                canvasEditorRef.current?.toggleTextHighlight(obj, color)
+              }}
+              onEnableTextEditing={(obj) => {
+                canvasEditorRef.current?.enableTextEditing(obj)
+              }}
+            />
           </div>
         </div>
       </main>

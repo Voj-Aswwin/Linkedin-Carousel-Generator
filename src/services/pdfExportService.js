@@ -121,14 +121,16 @@ class PDFExportService {
    * Generate PDF from all carousel slides
    * @param {Object} carouselData - The carousel data containing all slides
    * @param {string} headerPicture - Optional header picture data URL
-   * @param {boolean} usePhoneFrame - Whether to include phone frame
-   * @param {Array} phoneFramePhotos - Array of phone frame photos
    */
-  async generateCarouselPDF(carouselData, headerPicture = null, usePhoneFrame = false, phoneFramePhotos = []) {
+  async generateCarouselPDF(carouselData, headerPicture = null) {
     try {
       this.initializePDF()
       
-      const totalSlides = 2 + carouselData.infoSlides.length // Header + info slides + end slide
+      const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage
+      const totalSlides = 2 + carouselData.infoSlides.length + (hasImageSlide ? 1 : 0) // Header + info slides + image slide + end slide
+      const imageSlidePosition = hasImageSlide ? Math.ceil(carouselData.infoSlides.length / 2) + 1 : -1
+      
+      let currentSlideIndex = 0
       
       // Add header slide
       console.log('Generating header slide...')
@@ -136,49 +138,101 @@ class PDFExportService {
         carouselData.headerSlide, 
         'header', 
         headerPicture, 
-        0, 
-        totalSlides,
-        usePhoneFrame,
-        phoneFramePhotos,
-        0 // Use first photo for header
+        currentSlideIndex, 
+        totalSlides
       )
-      await this.addFabricCanvasToPDF(headerCanvas, 0)
+      await this.addFabricCanvasToPDF(headerCanvas, currentSlideIndex)
+      currentSlideIndex++
       
-      // Add info slides
-      for (let i = 0; i < carouselData.infoSlides.length; i++) {
+      // Add info slides (split around image slide)
+      const firstHalfCount = hasImageSlide ? Math.ceil(carouselData.infoSlides.length / 2) : carouselData.infoSlides.length
+      
+      // Add first half of info slides
+      for (let i = 0; i < firstHalfCount; i++) {
         console.log(`Generating info slide ${i + 1}...`)
         const infoCanvas = await canvasGenerator.createSlideCanvas(
           carouselData.infoSlides[i], 
           'info', 
           null, 
-          i + 1, 
-          totalSlides,
-          usePhoneFrame,
-          phoneFramePhotos,
-          Math.min(i, phoneFramePhotos.length - 1) // Cycle through photos
+          currentSlideIndex, 
+          totalSlides
         )
-        await this.addFabricCanvasToPDF(infoCanvas, i + 1)
+        await this.addFabricCanvasToPDF(infoCanvas, currentSlideIndex)
+        currentSlideIndex++
+      }
+      
+      // Add image slide (in the middle)
+      if (hasImageSlide) {
+        console.log('Generating image slide...')
+        const imageCanvas = await canvasGenerator.createSlideCanvas(
+          carouselData.imageSlide, 
+          'image', 
+          null, 
+          currentSlideIndex, 
+          totalSlides
+        )
+        await this.addFabricCanvasToPDF(imageCanvas, currentSlideIndex)
+        currentSlideIndex++
+      }
+      
+      // Add remaining info slides
+      for (let i = firstHalfCount; i < carouselData.infoSlides.length; i++) {
+        console.log(`Generating info slide ${i + 1}...`)
+        const infoCanvas = await canvasGenerator.createSlideCanvas(
+          carouselData.infoSlides[i], 
+          'info', 
+          null, 
+          currentSlideIndex, 
+          totalSlides
+        )
+        await this.addFabricCanvasToPDF(infoCanvas, currentSlideIndex)
+        currentSlideIndex++
       }
       
       // Add end slide
       console.log('Generating end slide...')
-      const endSlideIndex = carouselData.infoSlides.length + 1
       const endCanvas = await canvasGenerator.createSlideCanvas(
         carouselData.endSlide, 
         'end', 
         null, 
-        endSlideIndex, 
-        totalSlides,
-        usePhoneFrame,
-        phoneFramePhotos,
-        Math.min(endSlideIndex, phoneFramePhotos.length - 1) // Use last photo for end slide
+        currentSlideIndex, 
+        totalSlides
       )
-      await this.addFabricCanvasToPDF(endCanvas, endSlideIndex, true)
+      await this.addFabricCanvasToPDF(endCanvas, currentSlideIndex, true)
       
       return this.pdf
     } catch (error) {
       console.error('Error generating carousel PDF:', error)
       throw new Error(`Failed to generate PDF: ${error.message}`)
+    }
+  }
+
+  /**
+   * Generate PDF from current canvas state
+   * @param {Object} canvasState - The current canvas state
+   * @param {string} filename - The filename for the downloaded PDF
+   */
+  async generatePDFFromCanvasState(canvasState, filename = 'linkedin-carousel.pdf') {
+    try {
+      this.initializePDF()
+      
+      // Add the canvas image to the PDF
+      this.pdf.addImage(
+        canvasState.canvasData,
+        'PNG',
+        0,
+        0,
+        this.slideWidth,
+        this.slideHeight
+      )
+      
+      // Download the PDF
+      this.downloadPDF(filename)
+      
+      console.log('PDF generated from canvas state successfully!')
+    } catch (error) {
+      console.error('Error generating PDF from canvas state:', error)
+      throw new Error(`Failed to generate PDF from canvas state: ${error.message}`)
     }
   }
 

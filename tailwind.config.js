@@ -14,6 +14,10 @@ export default {
           600: '#2563eb',
           700: '#1d4ed8',
         }
+      },
+      gridTemplateColumns: {
+        '16': 'repeat(16, minmax(0, 1fr))',
+        '20': 'repeat(20, minmax(0, 1fr))',
       }
     },
   },

@@ -22,7 +22,7 @@ export class CanvasGenerator {
    * @param {number} selectedPhonePhoto - Index of selected phone photo
    * @returns {Promise<fabric.Canvas>} The generated canvas
    */
-  async createSlideCanvas(slideData, slideType, headerPicture = null, currentSlideIndex = 0, totalSlides = 1, usePhoneFrame = false, phoneFramePhotos = [], selectedPhonePhoto = 0) {
+  async createSlideCanvas(slideData, slideType, headerPicture = null, currentSlideIndex = 0, totalSlides = 1) {
     // Create a temporary canvas element
     const canvasElement = document.createElement('canvas')
     canvasElement.width = this.slideWidth
@@ -118,30 +118,86 @@ export class CanvasGenerator {
     }
 
     const parseMarkdownText = (text) => {
-      if (!text) return { text: '', styles: [] }
+      if (!text) return { text: '', styles: {} }
       
-      const styles = []
+      const styles = {}
       let cleanText = text
-      let currentIndex = 0
       
+      // Process all formatting in one pass to avoid offset issues
+      const matches = []
+      
+      // Find all **bold** patterns
       const boldRegex = /\*\*(.*?)\*\*/g
       let match
-      
       while ((match = boldRegex.exec(text)) !== null) {
-        const startIndex = match.index - (currentIndex * 4)
-        const endIndex = startIndex + match[1].length
-        
-        styles.push({
-          start: startIndex,
-          end: endIndex,
-          style: 'bold'
+        matches.push({
+          type: 'bold',
+          start: match.index,
+          end: match.index + match[0].length,
+          content: match[1],
+          contentStart: match.index + 2,
+          contentEnd: match.index + 2 + match[1].length
         })
-        
-        cleanText = cleanText.replace(match[0], match[1])
-        currentIndex++
       }
       
-      return { text: cleanText, styles }
+      // Find all *italic* patterns (but not **bold**)
+      const italicRegex = /(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)/g
+      while ((match = italicRegex.exec(text)) !== null) {
+        matches.push({
+          type: 'italic',
+          start: match.index,
+          end: match.index + match[0].length,
+          content: match[1],
+          contentStart: match.index + 1,
+          contentEnd: match.index + 1 + match[1].length
+        })
+      }
+      
+      // Find all ~~strikethrough~~ patterns
+      const strikethroughRegex = /~~(.*?)~~/g
+      while ((match = strikethroughRegex.exec(text)) !== null) {
+        matches.push({
+          type: 'strikethrough',
+          start: match.index,
+          end: match.index + match[0].length,
+          content: match[1],
+          contentStart: match.index + 2,
+          contentEnd: match.index + 2 + match[1].length
+        })
+      }
+      
+      // Sort matches by start position (descending) to process from end to start
+      matches.sort((a, b) => b.start - a.start)
+      
+      // Process matches and build clean text and styles
+      let resultText = text
+      let offset = 0
+      
+      matches.forEach(match => {
+        const startIndex = match.contentStart - offset
+        const endIndex = match.contentEnd - offset
+        
+        // Apply styling to each character in the range
+        for (let i = startIndex; i < endIndex; i++) {
+          if (!styles[i]) {
+            styles[i] = {}
+          }
+          
+          if (match.type === 'bold') {
+            styles[i].fontWeight = 'bold'
+          } else if (match.type === 'italic') {
+            styles[i].fontStyle = 'italic'
+          } else if (match.type === 'strikethrough') {
+            styles[i].linethrough = true
+          }
+        }
+        
+        // Remove the formatting markers from text
+        resultText = resultText.substring(0, match.start) + match.content + resultText.substring(match.end)
+        offset += (match.end - match.start) - match.content.length
+      })
+      
+      return { text: resultText, styles }
     }
 
     const createFormattedText = (text, options = {}) => {
@@ -152,19 +208,8 @@ export class CanvasGenerator {
         splitByGrapheme: true
       })
       
-      if (styles.length > 0) {
-        const textStyles = {}
-        styles.forEach(style => {
-          for (let i = style.start; i < style.end; i++) {
-            if (style.style === 'bold') {
-              textStyles[i] = { fontWeight: 'bold' }
-            }
-          }
-        })
-        
-        if (Object.keys(textStyles).length > 0) {
-          textObj.set('styles', textStyles)
-        }
+      if (Object.keys(styles).length > 0) {
+        textObj.set('styles', styles)
       }
       
       return textObj
@@ -177,14 +222,14 @@ export class CanvasGenerator {
       const cornerRadius = fontSize * 0.3
       
       return new fabric.Rect({
-        left: textObj.left,
-        top: textObj.top,
+        left: 0, // Position relative to group center
+        top: 0, // Position relative to group center
         width: boundingRect.width + padding,
         height: boundingRect.height + (padding * 0.6),
         fill: color,
         opacity: opacity,
-        originX: textObj.originX,
-        originY: textObj.originY,
+        originX: 'center',
+        originY: 'center',
         selectable: false,
         evented: false,
         rx: cornerRadius,
@@ -203,8 +248,8 @@ export class CanvasGenerator {
       // Create header slide content
       const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
       const title = createFormattedText(wrappedTitle, {
-        left: this.slideWidth / 2,
-        top: headerPicture ? this.slideHeight * 0.5 : this.slideHeight * 0.3,
+        left: 0, // Position relative to group center
+        top: 0, // Position relative to group center
         fontFamily: slideData.titleStyle.fontFamily,
         fontSize: slideData.titleStyle.fontSize * scaleFactor,
         fill: slideData.titleStyle.color,
@@ -219,6 +264,16 @@ export class CanvasGenerator {
 
       const titleHighlight = createTextHighlight(title, slideData.accentColor, 0.3)
       titleHighlight.highlightFor = title
+
+      // Create a group for title and its highlight so they move together
+      const titleGroup = new fabric.Group([titleHighlight, title], {
+        left: this.slideWidth / 2,
+        top: headerPicture ? this.slideHeight * 0.5 : this.slideHeight * 0.3,
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false
+      })
 
       const wrappedSubtitle = wrapText(slideData.subtitle, maxTextWidth, slideData.subtitleStyle.fontSize * scaleFactor)
       const subtitle = createFormattedText(wrappedSubtitle, {
@@ -263,7 +318,7 @@ export class CanvasGenerator {
               originY: 'center'
             })
             
-            canvas.add(titleHighlight, title, subtitle, accentRect, img)
+            canvas.add(titleGroup, subtitle, accentRect, img)
             this.addProgressBar(canvas, currentSlideIndex, totalSlides, slideData.accentColor, scaleFactor)
             canvas.renderAll()
             resolve(canvas)
@@ -271,7 +326,7 @@ export class CanvasGenerator {
         })
       }
       
-      canvas.add(titleHighlight, title, subtitle, accentRect)
+      canvas.add(titleGroup, subtitle, accentRect)
       this.addProgressBar(canvas, currentSlideIndex, totalSlides, slideData.accentColor, scaleFactor)
       
     } else if (slideType === 'info') {
@@ -336,6 +391,7 @@ export class CanvasGenerator {
             return // Skip if not enough space
           }
           
+          // Create textbox with bold formatting for important words
           const keyPointTextObj = createFormattedText(keyPointText, {
             left: this.slideWidth / 2,
             top: currentY,
@@ -350,6 +406,24 @@ export class CanvasGenerator {
             splitByGrapheme: true,
             lineHeight: 1.1
           })
+
+          // Apply accent color to bold text
+          if (keyPointText.includes('**')) {
+            const { styles } = parseMarkdownText(keyPointText)
+            const updatedStyles = {}
+            
+            // Apply accent color to bold text
+            Object.keys(styles).forEach(index => {
+              updatedStyles[index] = {
+                ...styles[index],
+                fill: slideData.accentColor
+              }
+            })
+            
+            if (Object.keys(updatedStyles).length > 0) {
+              keyPointTextObj.set('styles', updatedStyles)
+            }
+          }
 
           objects.push(keyPointTextObj)
           currentY += estimatedTextHeight
@@ -434,12 +508,121 @@ export class CanvasGenerator {
 
       canvas.add(accentRect, title, subtitle, ctaText)
       this.addProgressBar(canvas, currentSlideIndex, totalSlides, slideData.accentColor, scaleFactor)
+      
+    } else if (slideType === 'image') {
+      // Create image slide with generated image and text
+      if (slideData.generatedImage) {
+        return new Promise((resolve) => {
+          fabric.Image.fromURL(slideData.generatedImage, (img) => {
+            // Calculate image dimensions to fit in the upper portion of the slide
+            const maxWidth = this.slideWidth * 0.8
+            const maxHeight = this.slideHeight * 0.5
+            const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1)
+            
+            img.set({
+              left: this.slideWidth / 2,
+              top: this.slideHeight * 0.25,
+              scaleX: scale,
+              scaleY: scale,
+              originX: 'center',
+              originY: 'center',
+              shadow: new fabric.Shadow({
+                color: 'rgba(0,0,0,0.3)',
+                blur: 20,
+                offsetX: 0,
+                offsetY: 10
+              })
+            })
+            
+            // Add title below the image
+            const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
+            const title = createFormattedText(wrappedTitle, {
+              left: this.slideWidth / 2,
+              top: this.slideHeight * 0.65,
+              fontFamily: slideData.titleStyle.fontFamily,
+              fontSize: slideData.titleStyle.fontSize * scaleFactor,
+              fill: slideData.titleStyle.color,
+              fontWeight: slideData.titleStyle.fontWeight,
+              textAlign: 'center',
+              originX: 'center',
+              originY: 'center',
+              width: maxTextWidth,
+              splitByGrapheme: true,
+              lineHeight: 1.4
+            })
+
+            // Add subtitle below the title
+            const wrappedSubtitle = wrapText(slideData.subtitle, maxTextWidth, slideData.subtitleStyle.fontSize * scaleFactor)
+            const subtitle = createFormattedText(wrappedSubtitle, {
+              left: this.slideWidth / 2,
+              top: this.slideHeight * 0.8,
+              fontFamily: slideData.subtitleStyle.fontFamily,
+              fontSize: slideData.subtitleStyle.fontSize * scaleFactor,
+              fill: slideData.subtitleStyle.color,
+              fontWeight: slideData.subtitleStyle.fontWeight,
+              textAlign: 'center',
+              originX: 'center',
+              originY: 'center',
+              width: maxTextWidth,
+              splitByGrapheme: true,
+              lineHeight: 1.4
+            })
+
+            const accentRect = new fabric.Rect({
+              left: this.slideWidth / 2,
+              top: this.slideHeight * 0.58,
+              width: 200 * scaleFactor,
+              height: 4 * scaleFactor,
+              fill: slideData.accentColor,
+              originX: 'center',
+              originY: 'center'
+            })
+
+            canvas.add(img, accentRect, title, subtitle)
+            this.addProgressBar(canvas, currentSlideIndex, totalSlides, slideData.accentColor, scaleFactor)
+            canvas.renderAll()
+            resolve(canvas)
+          })
+        })
+      } else {
+        // Fallback if image generation failed
+        const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
+        const title = createFormattedText(wrappedTitle, {
+          left: this.slideWidth / 2,
+          top: this.slideHeight * 0.4,
+          fontFamily: slideData.titleStyle.fontFamily,
+          fontSize: slideData.titleStyle.fontSize * scaleFactor,
+          fill: slideData.titleStyle.color,
+          fontWeight: slideData.titleStyle.fontWeight,
+          textAlign: 'center',
+          originX: 'center',
+          originY: 'center',
+          width: maxTextWidth,
+          splitByGrapheme: true,
+          lineHeight: 1.4
+        })
+
+        const wrappedSubtitle = wrapText(slideData.subtitle, maxTextWidth, slideData.subtitleStyle.fontSize * scaleFactor)
+        const subtitle = createFormattedText(wrappedSubtitle, {
+          left: this.slideWidth / 2,
+          top: this.slideHeight * 0.6,
+          fontFamily: slideData.subtitleStyle.fontFamily,
+          fontSize: slideData.subtitleStyle.fontSize * scaleFactor,
+          fill: slideData.subtitleStyle.color,
+          fontWeight: slideData.subtitleStyle.fontWeight,
+          textAlign: 'center',
+          originX: 'center',
+          originY: 'center',
+          width: maxTextWidth,
+          splitByGrapheme: true,
+          lineHeight: 1.4
+        })
+
+        canvas.add(title, subtitle)
+        this.addProgressBar(canvas, currentSlideIndex, totalSlides, slideData.accentColor, scaleFactor)
+      }
     }
     
-    // Add phone frame if enabled
-    if (usePhoneFrame && phoneFramePhotos && phoneFramePhotos.length > 0) {
-      await this.addPhoneFrameToCanvas(canvas, phoneFramePhotos, selectedPhonePhoto, scaleFactor)
-    }
     
     canvas.renderAll()
     return canvas

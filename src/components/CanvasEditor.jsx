@@ -1,10 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { fabric } from 'fabric'
 import { Palette, Type, Square, RotateCcw, Image, Upload, Trash2, Undo, Smartphone } from 'lucide-react'
-import { generateIconForSlide } from '../services/geminiService'
 import PhoneFrame from './PhoneFrame'
 
-const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, totalSlides = 1, headerPicture = null, usePhoneFrame = false, phoneFramePhotos = [], onSlideUpdate }) => {
+const CanvasEditor = forwardRef(({ 
+  slideData, 
+  slideType = 'header', 
+  currentSlideIndex = 0, 
+  totalSlides = 1, 
+  headerPicture = null, 
+  onSlideUpdate,
+  onSelectedObjectChange,
+  onUndoHistoryChange,
+  onRedoHistoryChange,
+  onPhoneFramePhotosChange,
+  onSelectedPhonePhotoChange
+}, ref) => {
   const canvasRef = useRef(null)
   const fabricCanvasRef = useRef(null)
   const [selectedObject, setSelectedObject] = useState(null)
@@ -13,12 +24,20 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
   const [redoHistory, setRedoHistory] = useState([])
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const [isManualDelete, setIsManualDelete] = useState(false)
+  const [phoneFramePhotos, setPhoneFramePhotos] = useState([])
   const [selectedPhonePhoto, setSelectedPhonePhoto] = useState(0)
+  const [isTextEditing, setIsTextEditing] = useState(false)
+  const [forceUpdate, setForceUpdate] = useState(0) // Counter to force re-renders
+
 
   // Handle keyboard events
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Delete' || event.key === 'Backspace') {
+      // Check if we're in a text input or textarea (additional safety check)
+      const isInInput = event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA'
+      
+      // Only handle delete/backspace for non-editing objects
+      if ((event.key === 'Delete' || event.key === 'Backspace') && !isTextEditing && !isInInput) {
         if (selectedObject && fabricCanvasRef.current) {
           handleDeleteSelected()
         }
@@ -27,20 +46,20 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [selectedObject])
+  }, [selectedObject, isTextEditing])
 
   // Initialize Fabric.js canvas
   useEffect(() => {
     if (!canvasRef.current) return
 
     // Calculate scaled dimensions to fit container
-    const containerWidth = canvasRef.current.parentElement.clientWidth - 32 // Account for padding
+    const containerWidth = canvasRef.current.parentElement.clientWidth - 16 // Reduced padding
     const aspectRatio = 1440 / 1700 // Increased aspect ratio for 1440x1700
     let canvasWidth = containerWidth
     let canvasHeight = containerWidth / aspectRatio
     
     // If height is too large, scale by height instead
-    const maxHeight = window.innerHeight * 0.75 // 75% of viewport height
+    const maxHeight = window.innerHeight * 0.8 // Increased to 80% of viewport height
     if (canvasHeight > maxHeight) {
       canvasHeight = maxHeight
       canvasWidth = canvasHeight * aspectRatio
@@ -59,14 +78,17 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     // Handle object selection
     canvas.on('selection:created', (e) => {
       setSelectedObject(e.selected[0])
+      onSelectedObjectChange?.(e.selected[0])
     })
 
     canvas.on('selection:updated', (e) => {
       setSelectedObject(e.selected[0])
+      onSelectedObjectChange?.(e.selected[0])
     })
 
     canvas.on('selection:cleared', () => {
       setSelectedObject(null)
+      onSelectedObjectChange?.(null)
     })
 
     // Track all actions for undo functionality
@@ -98,6 +120,11 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       // Handle text movement to update highlights
       if (obj.type === 'text' || obj.type === 'textbox') {
         updateTextHighlight(obj)
+      } else if (obj.type === 'group') {
+        // If it's a group, check if it contains text objects
+        const groupObjects = obj.getObjects()
+        const textObjects = groupObjects.filter(o => o.type === 'text' || o.type === 'textbox')
+        textObjects.forEach(textObj => updateTextHighlight(textObj))
       }
     })
 
@@ -122,6 +149,11 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       // Handle text scaling to update highlights
       if (obj.type === 'text' || obj.type === 'textbox') {
         updateTextHighlight(obj)
+      } else if (obj.type === 'group') {
+        // If it's a group, check if it contains text objects
+        const groupObjects = obj.getObjects()
+        const textObjects = groupObjects.filter(o => o.type === 'text' || o.type === 'textbox')
+        textObjects.forEach(textObj => updateTextHighlight(textObj))
       }
     })
 
@@ -167,30 +199,46 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       if (obj && (obj.type === 'text' || obj.type === 'textbox')) {
         console.log('Double-click detected on text object')
         enableTextEditing(obj)
+      } else if (obj && obj.type === 'group') {
+        // Handle double-click on group - find text object inside
+        const textObj = obj.getObjects().find(o => o.type === 'text' || o.type === 'textbox')
+        if (textObj) {
+          console.log('Double-click detected on group with text object')
+          enableTextEditing(textObj)
+        }
       }
     })
 
-    // Also handle single click for text selection
+    // Handle text selection and editing
     canvas.on('mouse:down', (e) => {
       const obj = e.target
       if (obj && (obj.type === 'text' || obj.type === 'textbox')) {
-        // Ensure the text object is properly configured
+        // Ensure the text object is properly configured for selection and editing
         obj.set({
           selectable: true,
           editable: true,
-          evented: true
+          evented: true,
+          lockMovementX: false,
+          lockMovementY: false,
+          lockRotation: false,
+          lockScalingX: false,
+          lockScalingY: false
         })
         
-        // Set as active object
+        // Set as active object for property panel
         canvas.setActiveObject(obj)
-            canvas.renderAll()
+        canvas.renderAll()
+        
+        // Only enter editing mode on double-click, not single click
+        // This allows for proper selection and property panel display
       }
     })
+
 
     // Handle text editing completion
     canvas.on('text:editing:exited', (e) => {
       const obj = e.target
-      if (obj && obj.type === 'text') {
+      if (obj && (obj.type === 'text' || obj.type === 'textbox')) {
         updateTextHighlight(obj)
         handleObjectUpdate()
       }
@@ -199,7 +247,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     // Alternative text editing events for Fabric.js v5
     canvas.on('text:changed', (e) => {
       const obj = e.target
-      if (obj && obj.type === 'text') {
+      if (obj && (obj.type === 'text' || obj.type === 'textbox')) {
         updateTextHighlight(obj)
         handleObjectUpdate()
       }
@@ -208,7 +256,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     // Handle when text editing is completed
     canvas.on('selection:created', (e) => {
       const obj = e.target
-      if (obj && obj.type === 'text' && obj.editing === false) {
+      if (obj && (obj.type === 'text' || obj.type === 'textbox') && obj.editing === false) {
         updateTextHighlight(obj)
         handleObjectUpdate()
       }
@@ -217,111 +265,73 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     // Handle text editing events more comprehensively
     canvas.on('text:editing:entered', (e) => {
       console.log('Text editing entered')
+      setIsTextEditing(true)
+      const obj = e.target
+      if (obj) {
+        setForceUpdate(prev => prev + 1) // Force re-render to enable formatting buttons
+      }
     })
 
     canvas.on('text:editing:exited', (e) => {
       console.log('Text editing exited')
+      setIsTextEditing(false)
       const obj = e.target
-      if (obj && obj.type === 'text') {
+      if (obj && (obj.type === 'text' || obj.type === 'textbox')) {
         updateTextHighlight(obj)
         handleObjectUpdate()
+        setForceUpdate(prev => prev + 1) // Force re-render to disable formatting buttons
       }
     })
 
-    // Add a custom text editing handler for Fabric.js v5
-    const enableTextEditing = (textObj) => {
-      if (!textObj || (textObj.type !== 'text' && textObj.type !== 'textbox')) return
-      
-      console.log('Enabling text editing for:', textObj)
-      
-      // Ensure the object is properly configured
-      textObj.set({
-        selectable: true,
-        editable: true,
-        evented: true
-      })
-      
-      // Set as active object
-      canvas.setActiveObject(textObj)
-      
-      // For Fabric.js v5, we need to use a different approach
-      try {
-        // Method 1: For Textbox objects, try direct editing
-        if (textObj.type === 'textbox') {
-          console.log('Textbox detected, enabling direct editing')
-          textObj.set('editing', true)
-          canvas.renderAll()
-          return
-        }
-        
-        // Method 2: Try the modern Fabric.js v5 approach
-        if (textObj.enterEditing && typeof textObj.enterEditing === 'function') {
-          console.log('Using enterEditing method')
-          textObj.enterEditing()
-          return
-        }
-        
-        // Method 3: Use the editing property
-        console.log('Setting editing property to true')
-        textObj.set('editing', true)
-        canvas.renderAll()
-        
-        // Method 4: Try to create a textbox instead for better editing
-        if (!textObj.editing && textObj.type === 'text') {
-          console.log('Creating textbox for better editing experience')
-          const textbox = new fabric.Textbox(textObj.text, {
-            left: textObj.left,
-            top: textObj.top,
-            width: textObj.width,
-            fontSize: textObj.fontSize,
-            fontFamily: textObj.fontFamily,
-            fill: textObj.fill,
-            textAlign: textObj.textAlign,
-            originX: textObj.originX,
-            originY: textObj.originY,
-            selectable: true,
-            editable: true,
-            evented: true,
-            lockMovementX: false,
-            lockMovementY: false,
-            lockRotation: false,
-            lockScalingX: false,
-            lockScalingY: false
-          })
-          
-          // Replace the text object with textbox
-          canvas.remove(textObj)
-          canvas.add(textbox)
-          canvas.setActiveObject(textbox)
-          canvas.renderAll()
-        }
-        
-      } catch (error) {
-        console.error('Failed to enable text editing:', error)
-        // Fallback: just select the object
-        canvas.setActiveObject(textObj)
-        canvas.renderAll()
+    // Handle text selection changes to update UI
+    canvas.on('text:selection:changed', (e) => {
+      const obj = e.target
+      if (obj && obj.isEditing) {
+        setForceUpdate(prev => prev + 1) // Update UI to reflect selection state
       }
-    }
+    })
 
-    // Make the function available globally for debugging
-    window.enableTextEditing = enableTextEditing
 
     // Handle text selection changes
     canvas.on('selection:changed', (e) => {
       const activeObject = e.selected ? e.selected[0] : null
       if (activeObject && (activeObject.type === 'text' || activeObject.type === 'textbox')) {
         setSelectedObject(activeObject)
+      } else if (activeObject && activeObject.type === 'group') {
+        // For groups, find the text object inside
+        const textObj = activeObject.getObjects().find(o => o.type === 'text' || o.type === 'textbox')
+        if (textObj) {
+          setSelectedObject(textObj)
+        } else {
+          setSelectedObject(null)
+        }
       } else {
         setSelectedObject(null)
       }
+    })
+
+    // Handle selection creation to maintain property panel
+    canvas.on('selection:created', (e) => {
+      const activeObject = e.selected ? e.selected[0] : null
+      if (activeObject && (activeObject.type === 'text' || activeObject.type === 'textbox')) {
+        setSelectedObject(activeObject)
+      }
+    })
+
+    // Handle selection clearing to detect when text editing might end
+    canvas.on('selection:cleared', () => {
+      // Check if we were editing text and it's no longer active
+      if (isTextEditing) {
+        setIsTextEditing(false)
+      }
+      setSelectedObject(null)
     })
 
     // Handle object property changes
     canvas.on('object:modified', (e) => {
       const obj = e.target
       if (obj === selectedObject) {
-        setSelectedObject({ ...obj })
+        setForceUpdate(prev => prev + 1)
         if (obj.type === 'text') {
           updateTextHighlight(obj)
         }
@@ -332,14 +342,14 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     canvas.on('object:scaling', (e) => {
       const obj = e.target
       if (obj === selectedObject) {
-        setSelectedObject({ ...obj })
+        setForceUpdate(prev => prev + 1)
       }
     })
 
     canvas.on('object:rotating', (e) => {
       const obj = e.target
       if (obj === selectedObject) {
-        setSelectedObject({ ...obj })
+        setForceUpdate(prev => prev + 1)
       }
     })
 
@@ -347,12 +357,12 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     const handleResize = () => {
       if (!canvas || !canvasRef.current) return
       
-      const containerWidth = canvasRef.current.parentElement.clientWidth - 32
+      const containerWidth = canvasRef.current.parentElement.clientWidth - 16
       const aspectRatio = 1440 / 1700 // Increased aspect ratio for 1440x1700
       let canvasWidth = containerWidth
       let canvasHeight = containerWidth / aspectRatio
       
-      const maxHeight = window.innerHeight * 0.75
+      const maxHeight = window.innerHeight * 0.8
       if (canvasHeight > maxHeight) {
         canvasHeight = maxHeight
         canvasWidth = canvasHeight * aspectRatio
@@ -480,12 +490,42 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       return highlightedText
     }
 
+    // Helper function to make text editable - defined once for all slide types
+    const makeTextEditable = (textObj) => {
+      textObj.set({
+        selectable: true,
+        editable: true,
+        evented: true,
+        lockMovementX: false,
+        lockMovementY: false,
+        lockRotation: false,
+        lockScalingX: false,
+        lockScalingY: false,
+        hasControls: true,
+        hasBorders: true,
+        cornerSize: 8,
+        cornerStyle: 'circle',
+        cornerColor: '#007bff',
+        borderColor: '#007bff',
+        borderScaleFactor: 2
+      })
+    }
+
     if (slideType === 'header') {
-      // Create header slide content
+      // Check if this is a blank slide (no content)
+      if (!slideData.title || slideData.title.trim() === '') {
+        // For blank slides, just set background and return
+        canvas.renderAll()
+        setIsLoading(false)
+        setIsInitialLoad(false)
+        return
+      }
+      
+      // Create header slide content with proper formatting
       const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
       const title = createFormattedText(wrappedTitle, {
         left: canvas.width / 2,
-        top: headerPicture ? canvas.height * 0.5 : canvas.height * 0.3, // Lower if header picture is present
+        top: headerPicture ? canvas.height * 0.5 : canvas.height * 0.3,
         fontFamily: slideData.titleStyle.fontFamily,
         fontSize: slideData.titleStyle.fontSize * scaleFactor,
         fill: slideData.titleStyle.color,
@@ -498,19 +538,32 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
         selectable: true,
         editable: true,
         evented: true,
-        lineHeight: 1.6, // Increased line height for better spacing
+        lineHeight: 1.6,
         lockMovementX: false,
         lockMovementY: false,
         lockRotation: false,
         lockScalingX: false,
-        lockScalingY: false
+        lockScalingY: false,
+        hasControls: true,
+        hasBorders: true,
+        cornerSize: 8,
+        cornerStyle: 'circle',
+        cornerColor: '#007bff',
+        borderColor: '#007bff',
+        borderScaleFactor: 2
       })
 
-      // Add highlight background for title
+      // Add highlight background for title (positioned after text is created)
       const titleHighlight = createTextHighlight(title, slideData.accentColor, 0.3)
       titleHighlight.highlightFor = title // Store reference to the text object
+      
+      // Position highlight correctly relative to text
+      titleHighlight.set({
+        left: title.left,
+        top: title.top
+      })
 
-      // Add subtitle with text wrapping
+      // Add subtitle with text wrapping and formatting
       const wrappedSubtitle = wrapText(slideData.subtitle, maxTextWidth, slideData.subtitleStyle.fontSize * scaleFactor)
       const subtitle = createFormattedText(wrappedSubtitle, {
         left: canvas.width / 2,
@@ -527,12 +580,19 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
         selectable: true,
         editable: true,
         evented: true,
-        lineHeight: 1.6, // Add explicit line height
+        lineHeight: 1.6,
         lockMovementX: false,
         lockMovementY: false,
         lockRotation: false,
         lockScalingX: false,
-        lockScalingY: false
+        lockScalingY: false,
+        hasControls: true,
+        hasBorders: true,
+        cornerSize: 8,
+        cornerStyle: 'circle',
+        cornerColor: '#007bff',
+        borderColor: '#007bff',
+        borderScaleFactor: 2
       })
 
       // Add decorative elements - position between title and subtitle
@@ -546,22 +606,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
         originY: 'center'
       })
 
-      // Ensure all text objects are editable
-      const makeTextEditable = (textObj) => {
-        console.log('Making text object editable:', textObj)
-        textObj.set({
-          selectable: true,
-          editable: true,
-          evented: true,
-          lockMovementX: false,
-          lockMovementY: false,
-          lockRotation: false,
-          lockScalingX: false,
-          lockScalingY: false
-        })
-        console.log('Text object after making editable:', textObj)
-      }
-      
+      // Make all text objects editable (no longer grouped)
       makeTextEditable(title)
       makeTextEditable(subtitle)
       
@@ -648,7 +693,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       
       canvas.add(titleHighlight, title, subtitle, accentRect, progressBarBg, progressBarFill, progressText)
     } else if (slideType === 'info') {
-      // Create info slide content
+      // Create info slide content with proper formatting
       const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
       const title = createFormattedText(wrappedTitle, {
         left: canvas.width / 2,
@@ -665,7 +710,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
         selectable: true,
         editable: true,
         evented: true,
-        lineHeight: 1.4, // Add explicit line height for title
+        lineHeight: 1.4,
         lockMovementX: false,
         lockMovementY: false,
         lockRotation: false,
@@ -689,7 +734,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
           return // Skip if not enough space
         }
 
-        // Subheading
+        // Subheading with formatting
         const subheadingText = createFormattedText(subheading.heading, {
           left: canvas.width / 2,
           top: currentY,
@@ -705,7 +750,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
           selectable: true,
           editable: true,
           evented: true,
-          lineHeight: 1.2, // Reduced line height for tighter spacing
+          lineHeight: 1.2,
           lockMovementX: false,
           lockMovementY: false,
           lockRotation: false,
@@ -729,6 +774,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
             return // Skip this key point to avoid footer overlap
           }
           
+          // Create textbox with bold formatting for important words
           const keyPointTextObj = createFormattedText(keyPointText, {
             left: canvas.width / 2,
             top: currentY,
@@ -751,6 +797,24 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
             lockScalingX: false,
             lockScalingY: false
           })
+
+          // Apply accent color to bold text
+          if (keyPointText.includes('**')) {
+            const { styles } = parseMarkdownText(keyPointText)
+            const updatedStyles = {}
+            
+            // Apply accent color to bold text
+            Object.keys(styles).forEach(index => {
+              updatedStyles[index] = {
+                ...styles[index],
+                fill: slideData.accentColor
+              }
+            })
+            
+            if (Object.keys(updatedStyles).length > 0) {
+              keyPointTextObj.set('styles', updatedStyles)
+            }
+          }
 
           objects.push(keyPointTextObj)
           currentY += estimatedTextHeight
@@ -825,54 +889,256 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       // Arrow removed as requested
 
       // Ensure all text objects are editable
-      const makeTextEditable = (textObj) => {
-        textObj.set({
-          selectable: true,
-          editable: true,
-          evented: true,
-          lockMovementX: false,
-          lockMovementY: false,
-          lockRotation: false,
-          lockScalingX: false,
-          lockScalingY: false
-        })
-      }
-      
       objects.forEach(obj => {
         if (obj.type === 'text' || obj.type === 'textbox') {
           makeTextEditable(obj)
         }
       })
 
-      // Generate and add icon for info slides
-      if (slideType === 'info') {
-        try {
-          const iconData = await generateIconForSlide(slideData.title, slideData.subheadings.map(sh => sh.title).join(', '))
-          if (iconData) {
-            // Create a simple icon placeholder for now
-            const icon = new fabric.Circle({
-              left: canvas.width - 60 * scaleFactor,
-              top: 60 * scaleFactor,
-              radius: 25 * scaleFactor,
-              fill: slideData.accentColor,
-              originX: 'center',
-              originY: 'center',
-              selectable: false,
-              evented: false
-            })
-            objects.push(icon)
-          }
-        } catch (error) {
-          console.log('Icon generation failed, continuing without icon')
-        }
-      }
+      // Icon generation removed - not needed
 
       // Add objects to canvas in correct order
       canvas.add(accentRect) // Add accent line first
       objects.forEach(obj => canvas.add(obj)) // Add all text objects
       canvas.add(progressBarBg, progressBarFill, progressText) // Add progress bar elements
+    } else if (slideType === 'image') {
+      // Create image slide with generated image and text
+      console.log('Image slide detected, slideData:', slideData)
+      console.log('Has generatedImage?', !!slideData.generatedImage)
+      
+      if (slideData.generatedImage) {
+        console.log('Loading image from URL...')
+        fabric.Image.fromURL(slideData.generatedImage, (img) => {
+          console.log('Image loaded successfully!', img)
+          // Calculate image dimensions to fit in the upper portion of the slide
+          const maxWidth = canvas.width * 0.8
+          const maxHeight = canvas.height * 0.5
+          const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1)
+          
+          img.set({
+            left: canvas.width / 2,
+            top: canvas.height * 0.25,
+            scaleX: scale,
+            scaleY: scale,
+            originX: 'center',
+            originY: 'center',
+            selectable: true,
+            editable: true,
+            evented: true,
+            shadow: new fabric.Shadow({
+              color: 'rgba(0,0,0,0.3)',
+              blur: 20,
+              offsetX: 0,
+              offsetY: 10
+            })
+          })
+          
+          // Add title below the image
+          const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
+          const title = createFormattedText(wrappedTitle, {
+            left: canvas.width / 2,
+            top: canvas.height * 0.65,
+            fontFamily: slideData.titleStyle.fontFamily,
+            fontSize: slideData.titleStyle.fontSize * scaleFactor,
+            fill: slideData.titleStyle.color,
+            fontWeight: slideData.titleStyle.fontWeight,
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            width: maxTextWidth,
+            splitByGrapheme: true,
+            selectable: true,
+            editable: true,
+            evented: true,
+            lineHeight: 1.4
+          })
+
+          // Add subtitle below the title
+          const wrappedSubtitle = wrapText(slideData.subtitle, maxTextWidth, slideData.subtitleStyle.fontSize * scaleFactor)
+          const subtitle = createFormattedText(wrappedSubtitle, {
+            left: canvas.width / 2,
+            top: canvas.height * 0.8,
+            fontFamily: slideData.subtitleStyle.fontFamily,
+            fontSize: slideData.subtitleStyle.fontSize * scaleFactor,
+            fill: slideData.subtitleStyle.color,
+            fontWeight: slideData.subtitleStyle.fontWeight,
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            width: maxTextWidth,
+            splitByGrapheme: true,
+            selectable: true,
+            editable: true,
+            evented: true,
+            lineHeight: 1.4
+          })
+
+          const accentRect = new fabric.Rect({
+            left: canvas.width / 2,
+            top: canvas.height * 0.58,
+            width: 200 * scaleFactor,
+            height: 4 * scaleFactor,
+            fill: slideData.accentColor,
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false
+          })
+
+          // Progress bar
+          const progressBarWidth = canvas.width * 0.5
+          const progressBarHeight = 15 * scaleFactor
+          const progressBarY = canvas.height - (60 * scaleFactor)
+          const progress = ((currentSlideIndex + 1) / totalSlides) * 100
+          
+          const progressBarBg = new fabric.Rect({
+            left: canvas.width / 2,
+            top: progressBarY,
+            width: progressBarWidth,
+            height: progressBarHeight,
+            fill: 'rgba(0,0,0,0.1)',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            rx: progressBarHeight / 2,
+            ry: progressBarHeight / 2
+          })
+          
+          const progressBarFill = new fabric.Rect({
+            left: canvas.width / 2 - progressBarWidth / 2,
+            top: progressBarY,
+            width: (progressBarWidth * progress) / 100,
+            height: progressBarHeight,
+            fill: slideData.accentColor,
+            originX: 'left',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            rx: progressBarHeight / 2,
+            ry: progressBarHeight / 2
+          })
+          
+          const progressText = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
+            left: canvas.width / 2,
+            top: progressBarY + 20 * scaleFactor,
+            fontSize: 14 * scaleFactor,
+            fill: slideData.accentColor,
+            fontFamily: 'Arial',
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false
+          })
+
+          // Make text editable
+          makeTextEditable(title)
+          makeTextEditable(subtitle)
+
+          canvas.add(img, accentRect, title, subtitle, progressBarBg, progressBarFill, progressText)
+          canvas.renderAll()
+          setIsLoading(false)
+          setIsInitialLoad(false)
+        }, { crossOrigin: 'anonymous' })
+        return // Exit early for async image loading
+      } else {
+        console.log('No generatedImage found, showing text-only fallback')
+        // Fallback if image generation failed - show text only
+        const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
+        const title = createFormattedText(wrappedTitle, {
+          left: canvas.width / 2,
+          top: canvas.height * 0.4,
+          fontFamily: slideData.titleStyle.fontFamily,
+          fontSize: slideData.titleStyle.fontSize * scaleFactor,
+          fill: slideData.titleStyle.color,
+          fontWeight: slideData.titleStyle.fontWeight,
+          textAlign: 'center',
+          originX: 'center',
+          originY: 'center',
+          width: maxTextWidth,
+          splitByGrapheme: true,
+          selectable: true,
+          editable: true,
+          evented: true,
+          lineHeight: 1.4
+        })
+
+        const wrappedSubtitle = wrapText(slideData.subtitle, maxTextWidth, slideData.subtitleStyle.fontSize * scaleFactor)
+        const subtitle = createFormattedText(wrappedSubtitle, {
+          left: canvas.width / 2,
+          top: canvas.height * 0.6,
+          fontFamily: slideData.subtitleStyle.fontFamily,
+          fontSize: slideData.subtitleStyle.fontSize * scaleFactor,
+          fill: slideData.subtitleStyle.color,
+          fontWeight: slideData.subtitleStyle.fontWeight,
+          textAlign: 'center',
+          originX: 'center',
+          originY: 'center',
+          width: maxTextWidth,
+          splitByGrapheme: true,
+          selectable: true,
+          editable: true,
+          evented: true,
+          lineHeight: 1.4
+        })
+
+        // Progress bar
+        const progressBarWidth = canvas.width * 0.5
+        const progressBarHeight = 15 * scaleFactor
+        const progressBarY = canvas.height - (60 * scaleFactor)
+        const progress = ((currentSlideIndex + 1) / totalSlides) * 100
+        
+        const progressBarBg = new fabric.Rect({
+          left: canvas.width / 2,
+          top: progressBarY,
+          width: progressBarWidth,
+          height: progressBarHeight,
+          fill: 'rgba(0,0,0,0.1)',
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+          rx: progressBarHeight / 2,
+          ry: progressBarHeight / 2
+        })
+        
+        const progressBarFill = new fabric.Rect({
+          left: canvas.width / 2 - progressBarWidth / 2,
+          top: progressBarY,
+          width: (progressBarWidth * progress) / 100,
+          height: progressBarHeight,
+          fill: slideData.accentColor,
+          originX: 'left',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+          rx: progressBarHeight / 2,
+          ry: progressBarHeight / 2
+        })
+        
+        const progressText = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
+          left: canvas.width / 2,
+          top: progressBarY + 20 * scaleFactor,
+          fontSize: 14 * scaleFactor,
+          fill: slideData.accentColor,
+          fontFamily: 'Arial',
+          textAlign: 'center',
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false
+        })
+
+        makeTextEditable(title)
+        makeTextEditable(subtitle)
+
+        canvas.add(title, subtitle, progressBarBg, progressBarFill, progressText)
+        setIsLoading(false)
+        setIsInitialLoad(false)
+      }
     } else if (slideType === 'end') {
-      // Create end slide with CTA
+      // Create end slide with CTA and proper formatting
       const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
       const title = createFormattedText(wrappedTitle, {
         left: canvas.width / 2,
@@ -1008,19 +1274,6 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       })
 
       // Make all text objects editable
-      const makeTextEditable = (textObj) => {
-        textObj.set({
-          selectable: true,
-          editable: true,
-          evented: true,
-          lockMovementX: false,
-          lockMovementY: false,
-          lockRotation: false,
-          lockScalingX: false,
-          lockScalingY: false
-        })
-      }
-      
       makeTextEditable(title)
       makeTextEditable(subtitle)
       makeTextEditable(ctaText)
@@ -1105,11 +1358,14 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     setUndoHistory(prev => {
       const newHistory = [...prev, state]
       // Keep only last 10 states as requested
-      return newHistory.slice(-10)
+      const updatedHistory = newHistory.slice(-10)
+      onUndoHistoryChange?.(updatedHistory)
+      return updatedHistory
     })
     
     // Clear redo history when new action is performed
     setRedoHistory([])
+    onRedoHistoryChange?.([])
   }
 
   const handleUndo = () => {
@@ -1229,7 +1485,7 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       
     } else {
       // For other properties, use normal update
-    selectedObject.set(property, value)
+      selectedObject.set(property, value)
     }
     
     // Update highlight if it exists
@@ -1242,37 +1498,242 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     handleObjectUpdate()
     
     // Force re-render of the component to update the UI
-    setSelectedObject({ ...selectedObject })
+    setForceUpdate(prev => prev + 1)
+  }
+
+  // Apply character-level styling to selected text or entire text
+  const applyCharacterStyle = (styleType, value = true) => {
+    if (!selectedObject || (selectedObject.type !== 'text' && selectedObject.type !== 'textbox')) {
+      return
+    }
+
+    const canvas = fabricCanvasRef.current
+    
+    // Check if text is in editing mode
+    if (selectedObject.isEditing) {
+      const selectionStart = selectedObject.selectionStart
+      const selectionEnd = selectedObject.selectionEnd
+      
+      // If no text is selected, apply to entire text
+      if (selectionStart === selectionEnd) {
+        // Apply to entire text by setting global properties
+        let styleProp = {}
+        
+        switch(styleType) {
+          case 'bold':
+            const currentWeight = selectedObject.fontWeight || 'normal'
+            styleProp = { fontWeight: currentWeight === 'bold' ? 'normal' : 'bold' }
+            break
+          case 'italic':
+            const currentStyle = selectedObject.fontStyle || 'normal'
+            styleProp = { fontStyle: currentStyle === 'italic' ? 'normal' : 'italic' }
+            break
+          case 'underline':
+            const currentUnderline = selectedObject.underline || false
+            styleProp = { underline: !currentUnderline }
+            break
+          case 'linethrough':
+            const currentLinethrough = selectedObject.linethrough || false
+            styleProp = { linethrough: !currentLinethrough }
+            break
+          case 'fontSize':
+            styleProp = { fontSize: parseInt(value) }
+            break
+          case 'fill':
+            styleProp = { fill: value }
+            break
+          default:
+            return
+        }
+        
+        selectedObject.set(styleProp)
+        canvas.renderAll()
+        handleObjectUpdate()
+        return
+      }
+
+      // Get current styles for the selection
+      const currentStyles = selectedObject.getSelectionStyles(selectionStart, selectionEnd)
+      
+      // Determine the style property name and toggle value
+      let styleProp = {}
+      
+      switch(styleType) {
+        case 'bold':
+          // Check if any character is already bold
+          const isBold = currentStyles.some(style => style.fontWeight === 'bold')
+          styleProp = { fontWeight: isBold ? 'normal' : 'bold' }
+          break
+        case 'italic':
+          const isItalic = currentStyles.some(style => style.fontStyle === 'italic')
+          styleProp = { fontStyle: isItalic ? 'normal' : 'italic' }
+          break
+        case 'underline':
+          const isUnderlined = currentStyles.some(style => style.underline === true)
+          styleProp = { underline: !isUnderlined }
+          break
+        case 'linethrough':
+          const isLinethrough = currentStyles.some(style => style.linethrough === true)
+          styleProp = { linethrough: !isLinethrough }
+          break
+        case 'fontSize':
+          styleProp = { fontSize: parseInt(value) }
+          break
+        case 'fill':
+          styleProp = { fill: value }
+          break
+        default:
+          return
+      }
+
+      // Apply the style to the selection
+      selectedObject.setSelectionStyles(styleProp, selectionStart, selectionEnd)
+      
+      // Re-render canvas
+      canvas.renderAll()
+      handleObjectUpdate()
+    } else {
+      // Not in editing mode, apply to entire text
+      let styleProp = {}
+      
+      switch(styleType) {
+        case 'bold':
+          const currentWeight = selectedObject.fontWeight || 'normal'
+          styleProp = { fontWeight: currentWeight === 'bold' ? 'normal' : 'bold' }
+          break
+        case 'italic':
+          const currentStyle = selectedObject.fontStyle || 'normal'
+          styleProp = { fontStyle: currentStyle === 'italic' ? 'normal' : 'italic' }
+          break
+        case 'underline':
+          const currentUnderline = selectedObject.underline || false
+          styleProp = { underline: !currentUnderline }
+          break
+        case 'linethrough':
+          const currentLinethrough = selectedObject.linethrough || false
+          styleProp = { linethrough: !currentLinethrough }
+          break
+        case 'fontSize':
+          styleProp = { fontSize: parseInt(value) }
+          break
+        case 'fill':
+          styleProp = { fill: value }
+          break
+        default:
+          return
+      }
+      
+      selectedObject.set(styleProp)
+      canvas.renderAll()
+      handleObjectUpdate()
+    }
+  }
+
+  // Get font size of selected characters
+  const getSelectedCharactersFontSize = () => {
+    if (!selectedObject || (selectedObject.type !== 'text' && selectedObject.type !== 'textbox')) {
+      return selectedObject?.fontSize || 24
+    }
+
+    if (selectedObject.isEditing) {
+      const selectionStart = selectedObject.selectionStart
+      const selectionEnd = selectedObject.selectionEnd
+      
+      if (selectionStart === selectionEnd) {
+        return selectedObject.fontSize || 24
+      }
+
+      const styles = selectedObject.getSelectionStyles(selectionStart, selectionEnd)
+      if (styles.length > 0 && styles[0].fontSize) {
+        return styles[0].fontSize
+      }
+    }
+    
+    return selectedObject.fontSize || 24
   }
 
   // Helper function to parse markdown-style formatting in text
   const parseMarkdownText = (text) => {
-    if (!text) return { text: '', styles: [] }
+    if (!text) return { text: '', styles: {} }
     
-    const styles = []
+    const styles = {}
     let cleanText = text
-    let currentIndex = 0
+    
+    // Process all formatting in one pass to avoid offset issues
+    const matches = []
     
     // Find all **bold** patterns
     const boldRegex = /\*\*(.*?)\*\*/g
     let match
-    
     while ((match = boldRegex.exec(text)) !== null) {
-      const startIndex = match.index - (currentIndex * 4) // Account for removed **
-      const endIndex = startIndex + match[1].length
-      
-      styles.push({
-        start: startIndex,
-        end: endIndex,
-        style: 'bold'
+      matches.push({
+        type: 'bold',
+        start: match.index,
+        end: match.index + match[0].length,
+        content: match[1],
+        contentStart: match.index + 2,
+        contentEnd: match.index + 2 + match[1].length
       })
-      
-      // Remove ** from text
-      cleanText = cleanText.replace(match[0], match[1])
-      currentIndex++
     }
     
-    return { text: cleanText, styles }
+    // Find all *italic* patterns (but not **bold**)
+    const italicRegex = /(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)/g
+    while ((match = italicRegex.exec(text)) !== null) {
+      matches.push({
+        type: 'italic',
+        start: match.index,
+        end: match.index + match[0].length,
+        content: match[1],
+        contentStart: match.index + 1,
+        contentEnd: match.index + 1 + match[1].length
+      })
+    }
+    
+    // Find all ~~strikethrough~~ patterns
+    const strikethroughRegex = /~~(.*?)~~/g
+    while ((match = strikethroughRegex.exec(text)) !== null) {
+      matches.push({
+        type: 'strikethrough',
+        start: match.index,
+        end: match.index + match[0].length,
+        content: match[1],
+        contentStart: match.index + 2,
+        contentEnd: match.index + 2 + match[1].length
+      })
+    }
+    
+    // Sort matches by start position (descending) to process from end to start
+    matches.sort((a, b) => b.start - a.start)
+    
+    // Process matches and build clean text and styles
+    let resultText = text
+    let offset = 0
+    
+    matches.forEach(match => {
+      const startIndex = match.contentStart - offset
+      const endIndex = match.contentEnd - offset
+      
+      // Apply styling to each character in the range
+      for (let i = startIndex; i < endIndex; i++) {
+        if (!styles[i]) {
+          styles[i] = {}
+        }
+        
+        if (match.type === 'bold') {
+          styles[i].fontWeight = 'bold'
+        } else if (match.type === 'italic') {
+          styles[i].fontStyle = 'italic'
+        } else if (match.type === 'strikethrough') {
+          styles[i].linethrough = true
+        }
+      }
+      
+      // Remove the formatting markers from text
+      resultText = resultText.substring(0, match.start) + match.content + resultText.substring(match.end)
+      offset += (match.end - match.start) - match.content.length
+    })
+    
+    return { text: resultText, styles }
   }
 
   // Helper function to create formatted text with markdown support
@@ -1286,19 +1747,9 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     })
     
     // Apply formatting styles
-    if (styles.length > 0) {
-      const textStyles = {}
-      styles.forEach(style => {
-        for (let i = style.start; i < style.end; i++) {
-          if (style.style === 'bold') {
-            textStyles[i] = { fontWeight: 'bold' }
-          }
-        }
-      })
-      
-      if (Object.keys(textStyles).length > 0) {
-        textObj.set('styles', textStyles)
-      }
+    if (Object.keys(styles).length > 0) {
+      textObj.set('styles', styles)
+      console.log('Applied styles to text:', styles)
     }
     
     return textObj
@@ -1312,14 +1763,14 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     const cornerRadius = fontSize * 0.3 // Rounded corners based on font size
     
     return new fabric.Rect({
-      left: textObj.left,
-      top: textObj.top,
+      left: 0, // Position relative to group center
+      top: 0, // Position relative to group center
       width: boundingRect.width + padding,
       height: boundingRect.height + (padding * 0.6),
       fill: color,
       opacity: opacity,
-      originX: textObj.originX,
-      originY: textObj.originY,
+      originX: 'center',
+      originY: 'center',
       selectable: false,
       evented: false,
       rx: cornerRadius, // Horizontal corner radius
@@ -1362,26 +1813,45 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
 
   // Function to update text highlight when text is moved or resized
   const updateTextHighlight = (textObj) => {
-    if (!textObj || textObj.type !== 'text') return
+    if (!textObj) return
     
     const canvas = fabricCanvasRef.current
     const objects = canvas.getObjects()
     
-    // Find existing highlight for this text
-    const existingHighlight = objects.find(obj => 
-      obj.highlightFor === textObj && obj.type === 'rect'
-    )
+    // Handle both individual text objects and grouped text objects
+    let targetTextObj = textObj
+    let existingHighlight = null
+    
+    // Check if the text object is part of a group
+    if (textObj.group) {
+      // If it's in a group, find the highlight within the same group
+      const groupObjects = textObj.group.getObjects()
+      existingHighlight = groupObjects.find(obj => 
+        obj.highlightFor === textObj && obj.type === 'rect'
+      )
+      targetTextObj = textObj
+    } else {
+      // If it's a standalone text object, find highlight in canvas
+      existingHighlight = objects.find(obj => 
+        obj.highlightFor === textObj && obj.type === 'rect'
+      )
+      targetTextObj = textObj
+    }
     
     if (existingHighlight) {
       // Update highlight position and size with rounded styling
-      const fontSize = textObj.fontSize
-      const boundingRect = textObj.getBoundingRect()
+      const fontSize = targetTextObj.fontSize
+      const boundingRect = targetTextObj.getBoundingRect()
       const padding = fontSize * 0.4
       const cornerRadius = fontSize * 0.3
       
+      // For grouped objects, position relative to group center
+      const leftPos = targetTextObj.group ? 0 : targetTextObj.left
+      const topPos = targetTextObj.group ? 0 : targetTextObj.top
+      
       existingHighlight.set({
-        left: textObj.left,
-        top: textObj.top,
+        left: leftPos,
+        top: topPos,
         width: boundingRect.width + padding,
         height: boundingRect.height + (padding * 0.6),
         rx: cornerRadius,
@@ -1459,7 +1929,14 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       lockMovementY: false,
       lockRotation: false,
       lockScalingX: false,
-      lockScalingY: false
+      lockScalingY: false,
+      hasControls: true,
+      hasBorders: true,
+      cornerSize: 8,
+      cornerStyle: 'circle',
+      cornerColor: '#007bff',
+      borderColor: '#007bff',
+      borderScaleFactor: 2
     })
     
     // Create highlight for the text
@@ -1500,34 +1977,26 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
   }
 
   const addPhoneFrame = () => {
-    if (!usePhoneFrame || !phoneFramePhotos || phoneFramePhotos.length === 0) return
-    
     const canvas = fabricCanvasRef.current
     const scaleFactor = canvas.width / 1080
     
     // Create phone frame background (black bezel)
     const phoneFrame = new fabric.Rect({
-      left: canvas.width - 200 * scaleFactor,
-      top: 50 * scaleFactor,
+      left: 0, // Relative to group
+      top: 0, // Relative to group
       width: 120 * scaleFactor,
       height: 240 * scaleFactor,
       fill: '#000000',
       rx: 20 * scaleFactor,
       ry: 20 * scaleFactor,
-      selectable: true,
-      editable: true,
-      evented: true,
-      lockMovementX: false,
-      lockMovementY: false,
-      lockRotation: false,
-      lockScalingX: false,
-      lockScalingY: false
+      selectable: false,
+      evented: false
     })
     
     // Create screen area (white background)
     const screen = new fabric.Rect({
-      left: canvas.width - 190 * scaleFactor,
-      top: 60 * scaleFactor,
+      left: 10 * scaleFactor, // Relative to group
+      top: 10 * scaleFactor, // Relative to group
       width: 100 * scaleFactor,
       height: 220 * scaleFactor,
       fill: '#ffffff',
@@ -1537,16 +2006,16 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
       evented: false
     })
     
-    // Add the selected photo to the screen
-    if (phoneFramePhotos[selectedPhonePhoto]) {
+    // Add the selected photo to the screen if available
+    if (phoneFramePhotos.length > 0 && phoneFramePhotos[selectedPhonePhoto]) {
       fabric.Image.fromURL(phoneFramePhotos[selectedPhonePhoto], (img) => {
         const maxWidth = 100 * scaleFactor
         const maxHeight = 220 * scaleFactor
         const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1)
         
         img.set({
-          left: canvas.width - 190 * scaleFactor,
-          top: 60 * scaleFactor,
+          left: 10 * scaleFactor, // Relative to group
+          top: 10 * scaleFactor, // Relative to group
           scaleX: scale,
           scaleY: scale,
           originX: 'left',
@@ -1555,12 +2024,53 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
           evented: false
         })
         
-        canvas.add(phoneFrame, screen, img)
+        // Create a group with all phone frame elements
+        const phoneFrameGroup = new fabric.Group([phoneFrame, screen, img], {
+          left: canvas.width - 200 * scaleFactor,
+          top: 50 * scaleFactor,
+          selectable: true,
+          editable: true,
+          evented: true,
+          lockMovementX: false,
+          lockMovementY: false,
+          lockRotation: false,
+          lockScalingX: false,
+          lockScalingY: false
+        })
+        
+        canvas.add(phoneFrameGroup)
         canvas.renderAll()
       })
     } else {
-      canvas.add(phoneFrame, screen)
+      // Create a group with phone frame and screen
+      const phoneFrameGroup = new fabric.Group([phoneFrame, screen], {
+        left: canvas.width - 200 * scaleFactor,
+        top: 50 * scaleFactor,
+        selectable: true,
+        editable: true,
+        evented: true,
+        lockMovementX: false,
+        lockMovementY: false,
+        lockRotation: false,
+        lockScalingX: false,
+        lockScalingY: false
+      })
+      
+      canvas.add(phoneFrameGroup)
       canvas.renderAll()
+    }
+  }
+
+  const handlePhoneFramePhotoUpload = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const newPhotos = [...phoneFramePhotos, e.target.result]
+        setPhoneFramePhotos(newPhotos)
+        onPhoneFramePhotosChange?.(newPhotos)
+      }
+      reader.readAsDataURL(file)
     }
   }
 
@@ -1573,269 +2083,103 @@ const CanvasEditor = ({ slideData, slideType = 'header', currentSlideIndex = 0, 
     }
   }
 
+  // Enable text editing function
+  const enableTextEditing = (textObj) => {
+    if (!textObj || (textObj.type !== 'text' && textObj.type !== 'textbox')) return
+    
+    console.log('Enabling character-level text editing for:', textObj)
+    
+    const canvas = fabricCanvasRef.current
+    if (!canvas) return
+    
+    // Ensure the object is properly configured for character-level editing
+    textObj.set({
+      selectable: true,
+      editable: true,
+      evented: true,
+      lockMovementX: false,
+      lockMovementY: false,
+      lockRotation: false,
+      lockScalingX: false,
+      lockScalingY: false
+    })
+    
+    // Set as active object
+    canvas.setActiveObject(textObj)
+    
+    // Enable character-level editing
+    try {
+      // For Fabric.js v5, use the modern approach
+      if (textObj.enterEditing && typeof textObj.enterEditing === 'function') {
+        console.log('Using enterEditing method for character-level editing')
+        textObj.enterEditing()
+        setIsTextEditing(true)
+        return
+      }
+      
+      // Fallback: Set editing property
+      console.log('Setting editing property for character-level editing')
+      textObj.set('editing', true)
+      setIsTextEditing(true)
+      canvas.renderAll()
+      
+    } catch (error) {
+      console.error('Failed to enable character-level text editing:', error)
+      // Fallback: just select the object
+      canvas.setActiveObject(textObj)
+      canvas.renderAll()
+    }
+  }
+
+  // Make the function available globally for debugging
+  window.enableTextEditing = enableTextEditing
+
+  // Get current canvas state for PDF export
+  const getCurrentCanvasState = () => {
+    if (!fabricCanvasRef.current) return null
+    
+    const canvas = fabricCanvasRef.current
+    return {
+      canvasData: canvas.toDataURL('image/png', 1.0),
+      width: canvas.width,
+      height: canvas.height,
+      objects: canvas.getObjects().map(obj => obj.toObject())
+    }
+  }
+
+  // Expose methods to parent component
+  useImperativeHandle(ref, () => ({
+    addText,
+    addShape,
+    handleImageUpload,
+    addPhoneFrame,
+    handlePhoneFramePhotoUpload,
+    handleUndo,
+    handleRedo,
+    resetCanvas,
+    updateSelectedObject,
+    applyCharacterStyle,
+    toggleTextHighlight,
+    enableTextEditing,
+    handleDeleteSelected,
+    getCurrentCanvasState
+  }))
+
   return (
     <div className="space-y-4">
       {/* Canvas */}
       <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Canvas Editor</h3>
-          <div className="flex space-x-2">
-              <button
-                onClick={handleUndo}
-                disabled={undoHistory.length === 0}
-                className="flex items-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                <Undo className="h-4 w-4" />
-                <span>Undo</span>
-              </button>
-              <button
-                onClick={handleRedo}
-                disabled={redoHistory.length === 0}
-                className="flex items-center space-x-1 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-              >
-                <Undo className="h-4 w-4 rotate-180" />
-                <span>Redo</span>
-            </button>
-            <button
-              onClick={resetCanvas}
-              className="flex items-center space-x-1 px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              <RotateCcw className="h-4 w-4" />
-              <span>Reset</span>
-            </button>
-          </div>
-        </div>
-        
-        <div className="border-2 border-gray-200 rounded-lg overflow-hidden flex justify-center bg-gray-50 p-4">
+        <div className="border-2 border-gray-200 rounded-lg overflow-hidden flex justify-center bg-gray-50 p-2">
           <div className="w-full flex justify-center">
             <canvas 
               ref={canvasRef} 
-                className="max-w-full max-h-[75vh] object-contain"
+              className="max-w-full max-h-[80vh] object-contain"
             />
           </div>
         </div>
       </div>
-
-      {/* Phone Frame Preview */}
-      {usePhoneFrame && phoneFramePhotos.length > 0 && (
-        <div className="card">
-          <h4 className="font-semibold mb-3 flex items-center">
-            <Smartphone className="h-4 w-4 mr-2" />
-            Phone Frame Preview
-          </h4>
-          <PhoneFrame 
-            photos={phoneFramePhotos}
-            onPhotoSelect={setSelectedPhonePhoto}
-            selectedPhotoIndex={selectedPhonePhoto}
-          />
-        </div>
-      )}
-
-      {/* Editing Controls - Back to bottom layout */}
-      <div className="grid grid-cols-1 gap-4">
-        {/* Add Elements */}
-        <div className="card">
-          <h4 className="font-semibold mb-3 flex items-center">
-            <Square className="h-4 w-4 mr-2" />
-            Add Elements
-          </h4>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={addText}
-              className="flex flex-col items-center space-y-1 px-2 py-3 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-            >
-              <Type className="h-4 w-4" />
-              <span className="text-xs">Text</span>
-            </button>
-            <button
-              onClick={() => addShape('rectangle')}
-              className="flex flex-col items-center space-y-1 px-2 py-3 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors"
-            >
-              <Square className="h-4 w-4" />
-              <span className="text-xs">Rect</span>
-            </button>
-            <button
-              onClick={() => addShape('circle')}
-              className="flex flex-col items-center space-y-1 px-2 py-3 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-            >
-              <div className="h-4 w-4 rounded-full bg-green-600"></div>
-              <span className="text-xs">Circle</span>
-            </button>
-            <label className="flex flex-col items-center space-y-1 px-2 py-3 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors cursor-pointer">
-              <Upload className="h-4 w-4" />
-              <span className="text-xs">Image</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-            </label>
-            {usePhoneFrame && phoneFramePhotos.length > 0 && (
-              <button
-                onClick={addPhoneFrame}
-                className="flex flex-col items-center space-y-1 px-2 py-3 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-              >
-                <Smartphone className="h-4 w-4" />
-                <span className="text-xs">Phone</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Object Properties */}
-        {selectedObject && (
-          <div className="card">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold flex items-center">
-              <Palette className="h-4 w-4 mr-2" />
-              Properties
-                {(selectedObject.type === 'text' || selectedObject.type === 'textbox') && (
-                  <div className="ml-2 flex items-center space-x-2">
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                  Double-click to edit
-                </span>
-                    <button
-                      onClick={() => enableTextEditing(selectedObject)}
-                      className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200 transition-colors"
-                    >
-                      Edit Now
-                    </button>
-                  </div>
-              )}
-            </h4>
-              <button
-                onClick={handleDeleteSelected}
-                className="flex items-center space-x-1 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span>Delete</span>
-              </button>
-            </div>
-            <div className="space-y-3">
-              {(selectedObject.type === 'text' || selectedObject.type === 'textbox') && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Font Size: {selectedObject.fontSize || 24}px
-                    </label>
-                    <input
-                      key={`fontSize-${selectedObject.fontSize || 24}`}
-                      type="range"
-                      min="12"
-                      max="72"
-                      value={selectedObject.fontSize || 24}
-                      onChange={(e) => updateSelectedObject('fontSize', parseInt(e.target.value))}
-                      className="w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Font Family
-                    </label>
-                    <select
-                      key={`fontFamily-${selectedObject.fontFamily || 'Arial'}`}
-                      value={selectedObject.fontFamily || 'Arial'}
-                      onChange={(e) => updateSelectedObject('fontFamily', e.target.value)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
-                    >
-                      <option value="Arial">Arial</option>
-                      <option value="Helvetica">Helvetica</option>
-                      <option value="Georgia">Georgia</option>
-                      <option value="Times New Roman">Times New Roman</option>
-                    </select>
-                  </div>
-                </>
-              )}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Color
-                  </label>
-                  <input
-                    key={`color-${selectedObject.fill || '#000000'}`}
-                    type="color"
-                    value={selectedObject.fill || '#000000'}
-                    onChange={(e) => updateSelectedObject('fill', e.target.value)}
-                    className="w-full h-8 border border-gray-300 rounded"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Opacity: {Math.round((selectedObject.opacity || 1) * 100)}%
-                  </label>
-                  <input
-                    key={`opacity-${selectedObject.opacity || 1}`}
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.1"
-                    value={selectedObject.opacity || 1}
-                    onChange={(e) => updateSelectedObject('opacity', parseFloat(e.target.value))}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-              
-              {/* Highlight Controls */}
-              <div className="border-t pt-3 mt-3">
-                <h5 className="text-sm font-medium text-gray-700 mb-2">Text Highlight</h5>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1">
-                        Highlight Color
-                      </label>
-                      <input
-                        type="color"
-                        value="#ffff00"
-                        onChange={(e) => toggleTextHighlight(selectedObject, e.target.value)}
-                        className="w-full h-8 border border-gray-300 rounded"
-                      />
-                    </div>
-                    <div>
-                      <button
-                        onClick={() => toggleTextHighlight(selectedObject)}
-                        className="w-full px-3 py-2 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors"
-                      >
-                        Toggle Highlight
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Highlight Style
-                    </label>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => toggleTextHighlight(selectedObject, '#ffff00')}
-                        className="px-2 py-1 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors"
-                      >
-                        Yellow
-                      </button>
-                      <button
-                        onClick={() => toggleTextHighlight(selectedObject, '#ff6b6b')}
-                        className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
-                      >
-                        Red
-                      </button>
-                      <button
-                        onClick={() => toggleTextHighlight(selectedObject, '#4ecdc4')}
-                        className="px-2 py-1 text-xs bg-teal-100 text-teal-700 rounded hover:bg-teal-200 transition-colors"
-                      >
-                        Teal
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   )
-}
+})
 
 export default CanvasEditor

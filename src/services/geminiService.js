@@ -292,29 +292,45 @@ export const generateHeaderSlideAdvanced = async (userContent, options = {}) => 
   }
 }
 
-// New function to generate complete carousel with multiple slides
-export const generateIconForSlide = async (slideTitle, slideContent) => {
+// Image generation using Gemini 2.0 Flash Experimental
+export const generateImageFromPrompt = async (prompt) => {
   try {
-    const prompt = `Generate a simple, professional icon that represents the following slide content:
-
-Title: ${slideTitle}
-Content: ${slideContent}
-
-Requirements:
-- Simple, clean design
-- Professional appearance
-- Suitable for LinkedIn carousel
-- Minimalist style
-- Should be relevant to the content theme
-- Use modern, business-appropriate imagery
-
-Create an SVG icon that would work well in the top-right corner of a slide.`
-
-    const result = await imageModel.generateContent(prompt)
-    const response = await result.response
-    return response.text()
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${API_KEY}`
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+          responseModalities: ["TEXT", "IMAGE"]  // Enable image generation
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Image generation failed: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    
+    // Extract base64 image data from response
+    for (const candidate of data.candidates || []) {
+      for (const part of candidate.content?.parts || []) {
+        if (part.inlineData?.data) {
+          // Return as data URL for easy use in canvas
+          return `data:image/png;base64,${part.inlineData.data}`
+        }
+      }
+    }
+    
+    throw new Error('No image data found in response')
   } catch (error) {
-    console.error('Error generating icon:', error)
+    console.error('Error generating image:', error)
     return null
   }
 }
@@ -350,9 +366,21 @@ export const generateCarouselSlides = async (userContent) => {
       ]
     })
     
-    // Enhanced prompt for generating a complete carousel
+    // Enhanced prompt for generating a complete carousel with 3-color scheme
     const prompt = `
     You are an expert LinkedIn carousel designer and content strategist. Create a complete LinkedIn carousel with as many slides as needed to comprehensively cover ALL the content provided. Do not limit the number of slides - use as many as necessary to ensure every important point is included. Based on this content: "${userContent}"
+    
+    FIRST, analyze the content and generate a cohesive 3-color scheme:
+    1. BACKGROUND COLOR: Choose a primary background color that reflects the content's mood and industry
+    2. TEXT COLOR: Choose a high-contrast text color that ensures readability
+    3. ACCENT COLOR: Choose a vibrant accent color that complements the background and creates visual interest
+    
+    Color Scheme Guidelines:
+    - Use professional, modern color combinations
+    - Ensure high contrast for readability
+    - Consider color psychology (blue for trust, green for growth, etc.)
+    - Choose colors that work well on mobile devices
+    - Ensure accessibility and readability
     
     Generate a JSON object with the following structure:
     {
@@ -373,6 +401,31 @@ export const generateCarouselSlides = async (userContent) => {
         },
         "subtitleStyle": {
           "fontSize": 40-50,
+          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+          "color": "#hexcolor",
+          "fontWeight": "normal" | "bold"
+        },
+        "accentColor": "#hexcolor",
+        "layout": "centered" | "left-aligned" | "right-aligned"
+      },
+      "imageSlide": {
+        "imagePrompt": "A detailed prompt for AI image generation that captures the essence of the content (e.g., 'A professional illustration showing [key concept], modern style, clean background, no text or symbols')",
+        "title": "A compelling title that complements the image (max 8 words)",
+        "subtitle": "Supporting text that adds value and context to the image (max 20 words)",
+        "background": {
+          "type": "gradient" | "solid" | "pattern",
+          "color1": "#hexcolor",
+          "color2": "#hexcolor",
+          "pattern": "dots" | "lines" | "geometric" | "none"
+        },
+        "titleStyle": {
+          "fontSize": 50-70,
+          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+          "color": "#hexcolor",
+          "fontWeight": "bold" | "normal"
+        },
+        "subtitleStyle": {
+          "fontSize": 30-40,
           "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
           "color": "#hexcolor",
           "fontWeight": "normal" | "bold"
@@ -476,6 +529,16 @@ export const generateCarouselSlides = async (userContent) => {
     18. CRITICAL: Always create a final "end slide" with a compelling call-to-action (CTA)
     19. The end slide should include: a strong CTA message, contact information, or next steps
     20. End slide should use the same color theme as other slides but with a distinct "conclusion" feel
+    21. CRITICAL: Use a consistent 3-color scheme throughout all slides (Background, Text, Accent)
+    22. IMPORTANT: Make important words and phrases BOLD and use the accent color for emphasis
+    23. Use **bold** formatting for key statistics, important terms, and compelling phrases
+    24. Apply the accent color to bold text to make it stand out
+    25. Ensure the 3-color scheme is professional and accessible
+    26. CRITICAL: Always create an "imageSlide" that will feature an AI-generated image
+    27. The imageSlide should be placed strategically in the middle of the carousel to break up text-heavy slides
+    28. The imagePrompt should be detailed and descriptive (e.g., "A modern illustration of [concept], professional style, clean background, no text or symbols, vibrant colors")
+    29. The imageSlide should visually represent the core concept or key message of the content
+    30. Keep the imageSlide text minimal but impactful - the image is the focus
     
     Create a complete, professional LinkedIn carousel that tells a compelling story and covers ALL the user's content comprehensively. Do not leave out any important points - create additional slides if needed to ensure complete coverage. ALWAYS end with a call-to-action slide.
     `
@@ -493,6 +556,19 @@ export const generateCarouselSlides = async (userContent) => {
         if (!parsedData.headerSlide || !parsedData.infoSlides) {
           throw new Error('Missing required fields in AI response')
         }
+        
+        // If imageSlide exists and has an imagePrompt, generate the image
+        if (parsedData.imageSlide?.imagePrompt) {
+          console.log('Generating image for carousel...')
+          const generatedImage = await generateImageFromPrompt(parsedData.imageSlide.imagePrompt)
+          if (generatedImage) {
+            parsedData.imageSlide.generatedImage = generatedImage
+            console.log('Image generated successfully!')
+          } else {
+            console.warn('Failed to generate image, slide will not include image')
+          }
+        }
+        
         return parsedData
       } catch (parseError) {
         console.error('JSON parsing error:', parseError)
@@ -522,6 +598,30 @@ export const generateCarouselSlides = async (userContent) => {
         },
         subtitleStyle: {
           fontSize: 45,
+          fontFamily: "Arial",
+          color: "#f8f9fa",
+          fontWeight: "normal"
+        },
+        accentColor: "#ffd700",
+        layout: "centered"
+      },
+      imageSlide: {
+        imagePrompt: "A professional illustration of digital transformation and innovation, modern style, vibrant colors, no text",
+        title: "Visualizing Success",
+        subtitle: "Transform your content into engaging visual stories",
+        background: {
+          type: "gradient",
+          color1: "#667eea",
+          color2: "#764ba2"
+        },
+        titleStyle: {
+          fontSize: 60,
+          fontFamily: "Arial",
+          color: "#ffffff",
+          fontWeight: "bold"
+        },
+        subtitleStyle: {
+          fontSize: 35,
           fontFamily: "Arial",
           color: "#f8f9fa",
           fontWeight: "normal"
