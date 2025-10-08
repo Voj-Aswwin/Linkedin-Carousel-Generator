@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react'
-import { Sparkles, FileText, Wand2, Download } from 'lucide-react'
+import { Sparkles, FileText, Wand2, Download, Copy, GripVertical } from 'lucide-react'
 import TextInput from './components/TextInput'
 import GenerateButton from './components/GenerateButton'
 import CanvasEditor from './components/CanvasEditor'
@@ -44,6 +44,10 @@ function App() {
   const [redoHistory, setRedoHistory] = useState([])
   const [phoneFramePhotos, setPhoneFramePhotos] = useState([])
   const [selectedPhonePhoto, setSelectedPhonePhoto] = useState(0)
+  const [customSlides, setCustomSlides] = useState([])
+  const [selectedSlides, setSelectedSlides] = useState(new Set())
+  const [draggedSlide, setDraggedSlide] = useState(null)
+  const [dragOverIndex, setDragOverIndex] = useState(null)
   const canvasEditorRef = useRef(null)
 
   const handleGenerate = async () => {
@@ -120,33 +124,62 @@ function App() {
   }
 
   const getCurrentSlide = () => {
-    if (!carouselData) return blankSlide
+    if (!carouselData) {
+      // If no carousel data, check if we have custom slides
+      if (customSlides.length > 0 && currentSlideIndex < customSlides.length) {
+        return customSlides[currentSlideIndex]
+      }
+      return blankSlide
+    }
     
     // Header slide
     if (currentSlideIndex === 0) return carouselData.headerSlide
     
-    // Calculate middle position for image slide
-    const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage
+    // Calculate total slides and image slide positions
+    const imageSlides = carouselData.imageSlides || []
     const infoSlidesCount = carouselData.infoSlides.length
-    const imageSlidePosition = hasImageSlide ? Math.ceil(infoSlidesCount / 2) + 1 : -1
+    const imageSlidesCount = imageSlides.length
+    const totalCarouselSlides = 2 + infoSlidesCount + imageSlidesCount
     
-    // Image slide (in the middle)
-    if (hasImageSlide && currentSlideIndex === imageSlidePosition) {
-      return carouselData.imageSlide
+    // Check if current slide is a custom slide (after all carousel slides)
+    if (currentSlideIndex >= totalCarouselSlides) {
+      const customIndex = currentSlideIndex - totalCarouselSlides
+      if (customIndex < customSlides.length) {
+        return customSlides[customIndex]
+      }
     }
     
-    // Info slides (split around image slide)
-    if (currentSlideIndex < imageSlidePosition || !hasImageSlide) {
-      // Before image slide or no image slide
-      const infoIndex = currentSlideIndex - 1
+    // Create a properly interleaved array of slides
+    const allSlides = []
+    
+    // Create arrays of slide data with their types
+    const infoSlideData = carouselData.infoSlides.map(slide => ({ type: 'info', data: slide }))
+    const imageSlideData = imageSlides.map(slide => ({ type: 'image', data: slide }))
+    
+    // Interleave slides: alternate between info and image slides
+    let infoIndex = 0
+    let imageIndex = 0
+    const maxSlides = Math.max(infoSlidesCount, imageSlidesCount)
+    
+    for (let i = 0; i < maxSlides; i++) {
+      // Add info slide if available
       if (infoIndex < infoSlidesCount) {
-        return carouselData.infoSlides[infoIndex]
+        allSlides.push(infoSlideData[infoIndex])
+        infoIndex++
       }
-    } else if (hasImageSlide && currentSlideIndex > imageSlidePosition) {
-      // After image slide
-      const infoIndex = currentSlideIndex - 2 // Account for header and image slide
-      if (infoIndex < infoSlidesCount) {
-        return carouselData.infoSlides[infoIndex]
+      
+      // Add image slide if available
+      if (imageIndex < imageSlidesCount) {
+        allSlides.push(imageSlideData[imageIndex])
+        imageIndex++
+      }
+    }
+    
+    // Find the current slide
+    if (currentSlideIndex <= allSlides.length) {
+      const slide = allSlides[currentSlideIndex - 1]
+      if (slide) {
+        return slide.data
       }
     }
     
@@ -155,23 +188,362 @@ function App() {
   }
 
   const getTotalSlides = () => {
-    if (!carouselData) return 1
-    const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage
-    // Header + info slides + image slide (if exists) + end slide
-    return 2 + carouselData.infoSlides.length + (hasImageSlide ? 1 : 0)
+    if (!carouselData) return 1 + customSlides.length
+    const imageSlides = carouselData.imageSlides || []
+    const imageSlidesCount = imageSlides.length
+    // Header + info slides + image slides + end slide + custom slides
+    return 2 + carouselData.infoSlides.length + imageSlidesCount + customSlides.length
   }
   
   const getSlideType = () => {
     if (!carouselData) return 'header'
     if (currentSlideIndex === 0) return 'header'
-    
-    const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage
-    const infoSlidesCount = carouselData.infoSlides.length
-    const imageSlidePosition = hasImageSlide ? Math.ceil(infoSlidesCount / 2) + 1 : -1
-    
-    if (hasImageSlide && currentSlideIndex === imageSlidePosition) return 'image'
     if (currentSlideIndex === getTotalSlides() - 1) return 'end'
+    
+    // Use the same interleaving logic as getCurrentSlide
+    const imageSlides = carouselData.imageSlides || []
+    const infoSlidesCount = carouselData.infoSlides.length
+    const imageSlidesCount = imageSlides.length
+    
+    // Create the same interleaved array
+    const allSlides = []
+    const infoSlideData = carouselData.infoSlides.map(slide => ({ type: 'info', data: slide }))
+    const imageSlideData = imageSlides.map(slide => ({ type: 'image', data: slide }))
+    
+    let infoIndex = 0
+    let imageIndex = 0
+    const maxSlides = Math.max(infoSlidesCount, imageSlidesCount)
+    
+    for (let i = 0; i < maxSlides; i++) {
+      if (infoIndex < infoSlidesCount) {
+        allSlides.push(infoSlideData[infoIndex])
+        infoIndex++
+      }
+      if (imageIndex < imageSlidesCount) {
+        allSlides.push(imageSlideData[imageIndex])
+        imageIndex++
+      }
+    }
+    
+    // Find the current slide type
+    if (currentSlideIndex <= allSlides.length) {
+      const slide = allSlides[currentSlideIndex - 1]
+      if (slide) {
+        return slide.type
+      }
+    }
+    
     return 'info'
+  }
+
+  const addBlankSlide = () => {
+    const newSlide = {
+      ...blankSlide,
+      title: `Blank Slide ${customSlides.length + 1}`,
+      id: `custom-${Date.now()}`,
+      bulletPoints: [
+        "Add your content here",
+        "Use bullet points for better engagement",
+        "Customize as needed"
+      ],
+      bulletStyle: {
+        fontSize: 35,
+        fontFamily: "Arial",
+        color: "#333333",
+        fontWeight: "normal"
+      }
+    }
+    
+    // Add slide at current position + 1 (next slide)
+    const newCustomSlides = [...customSlides]
+    
+    if (!carouselData) {
+      // No carousel data, insert at current position + 1
+      newCustomSlides.splice(currentSlideIndex + 1, 0, newSlide)
+      setCustomSlides(newCustomSlides)
+      setCurrentSlideIndex(currentSlideIndex + 1)
+    } else {
+      // Has carousel data, calculate where to insert
+      const totalCarouselSlides = 2 + (carouselData.infoSlides?.length || 0) + (carouselData.imageSlides?.length || 0)
+      
+      if (currentSlideIndex < totalCarouselSlides) {
+        // Insert after current carousel slide
+        const insertIndex = currentSlideIndex - totalCarouselSlides + 1
+        newCustomSlides.splice(insertIndex, 0, newSlide)
+        setCustomSlides(newCustomSlides)
+        setCurrentSlideIndex(currentSlideIndex + 1)
+      } else {
+        // Insert at current position + 1
+        const insertIndex = currentSlideIndex - totalCarouselSlides + 1
+        newCustomSlides.splice(insertIndex, 0, newSlide)
+        setCustomSlides(newCustomSlides)
+        setCurrentSlideIndex(currentSlideIndex + 1)
+      }
+    }
+  }
+
+  const deleteSelectedSlides = () => {
+    if (selectedSlides.size === 0) return
+    
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${selectedSlides.size} slide(s)? This action cannot be undone.`
+    )
+    
+    if (!confirmed) return
+    
+    const slidesToDelete = Array.from(selectedSlides)
+    
+    // Only allow deletion of custom slides (not generated carousel slides)
+    const customSlideIndices = slidesToDelete.filter(index => {
+      if (!carouselData) return true // If no carousel data, all slides are custom
+      
+      const imageSlides = carouselData.imageSlides || []
+      const imageSlidesCount = imageSlides.length
+      const totalCarouselSlides = 2 + carouselData.infoSlides.length + imageSlidesCount
+      
+      return index >= totalCarouselSlides
+    })
+    
+    if (customSlideIndices.length === 0) {
+      alert('You can only delete custom slides. Generated carousel slides cannot be deleted.')
+      return
+    }
+    
+    // Convert to custom slide indices
+    const customIndices = customSlideIndices.map(index => {
+      if (!carouselData) return index
+      
+      const imageSlides = carouselData.imageSlides || []
+      const imageSlidesCount = imageSlides.length
+      const totalCarouselSlides = 2 + carouselData.infoSlides.length + imageSlidesCount
+      
+      return index - totalCarouselSlides
+    })
+    
+    const newCustomSlides = customSlides.filter((_, index) => !customIndices.includes(index))
+    setCustomSlides(newCustomSlides)
+    setSelectedSlides(new Set())
+    
+    // Adjust current slide index if needed
+    if (currentSlideIndex >= getTotalSlides() - customSlideIndices.length) {
+      setCurrentSlideIndex(Math.max(0, getTotalSlides() - customSlideIndices.length - 1))
+    }
+  }
+
+  const toggleSlideSelection = (index) => {
+    const newSelectedSlides = new Set(selectedSlides)
+    if (newSelectedSlides.has(index)) {
+      newSelectedSlides.delete(index)
+    } else {
+      newSelectedSlides.add(index)
+    }
+    setSelectedSlides(newSelectedSlides)
+  }
+
+  const selectAllSlides = () => {
+    const allSlideIndices = Array.from({ length: getTotalSlides() }, (_, index) => index)
+    setSelectedSlides(new Set(allSlideIndices))
+  }
+
+  const clearSelection = () => {
+    setSelectedSlides(new Set())
+  }
+
+  const duplicateSlide = (index) => {
+    const currentSlide = getCurrentSlide()
+    if (!currentSlide) return
+    
+    const duplicatedSlide = {
+      ...currentSlide,
+      title: `${currentSlide.title} (Copy)`,
+      id: `custom-${Date.now()}`,
+    }
+    
+    // Add duplicated slide at current position + 1
+    const newCustomSlides = [...customSlides]
+    const insertIndex = Math.max(0, currentSlideIndex - (carouselData ? (2 + (carouselData.infoSlides?.length || 0) + (carouselData.imageSlides?.length || 0)) : 0))
+    newCustomSlides.splice(insertIndex, 0, duplicatedSlide)
+    setCustomSlides(newCustomSlides)
+    
+    // Navigate to the duplicated slide
+    setCurrentSlideIndex(currentSlideIndex + 1)
+  }
+
+  const deleteSlide = (index) => {
+    // Only allow deletion of custom slides
+    if (!carouselData) {
+      // No carousel data, all slides are custom
+      const confirmed = window.confirm('Are you sure you want to delete this slide? This action cannot be undone.')
+      if (!confirmed) return
+      
+      const newCustomSlides = customSlides.filter((_, i) => i !== index)
+      setCustomSlides(newCustomSlides)
+      
+      // Adjust current slide index
+      if (currentSlideIndex >= index) {
+        setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))
+      }
+    } else {
+      // Has carousel data, check if it's a custom slide
+      const totalCarouselSlides = 2 + (carouselData.infoSlides?.length || 0) + (carouselData.imageSlides?.length || 0)
+      
+      if (index >= totalCarouselSlides) {
+        const confirmed = window.confirm('Are you sure you want to delete this slide? This action cannot be undone.')
+        if (!confirmed) return
+        
+        const customIndex = index - totalCarouselSlides
+        const newCustomSlides = customSlides.filter((_, i) => i !== customIndex)
+        setCustomSlides(newCustomSlides)
+        
+        // Adjust current slide index
+        if (currentSlideIndex >= index) {
+          setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))
+        }
+      } else {
+        alert('You can only delete custom slides. Generated carousel slides cannot be deleted.')
+      }
+    }
+  }
+
+  const copySlide = (index) => {
+    // Get the slide data for the specific index
+    let slideToCopy = null
+    
+    if (!carouselData) {
+      // No carousel data, get from custom slides
+      if (index < customSlides.length) {
+        slideToCopy = customSlides[index]
+      }
+    } else {
+      // Has carousel data, determine which slide to copy
+      const totalCarouselSlides = 2 + (carouselData.infoSlides?.length || 0) + (carouselData.imageSlides?.length || 0)
+      
+      if (index === 0) {
+        slideToCopy = carouselData.headerSlide
+      } else if (index === totalCarouselSlides - 1) {
+        slideToCopy = carouselData.endSlide
+      } else if (index >= totalCarouselSlides) {
+        // Custom slide
+        const customIndex = index - totalCarouselSlides
+        slideToCopy = customSlides[customIndex]
+      } else {
+        // Carousel slide - determine if it's image or info
+        const imageSlides = carouselData.imageSlides || []
+        const infoSlidesCount = carouselData.infoSlides.length
+        const imageSlidesCount = imageSlides.length
+        const totalContentSlides = infoSlidesCount + imageSlidesCount
+        const imageSlideInterval = Math.max(1, Math.floor(totalContentSlides / (imageSlidesCount + 1)))
+        
+        let currentInfoIndex = 0
+        let currentImageIndex = 0
+        
+        for (let i = 0; i < index - 1; i++) {
+          if (imageSlidesCount > 0 && currentImageIndex < imageSlidesCount && 
+              (i % imageSlideInterval === 0 || currentInfoIndex >= infoSlidesCount)) {
+            currentImageIndex++
+          } else if (currentInfoIndex < infoSlidesCount) {
+            currentInfoIndex++
+          }
+        }
+        
+        if (imageSlidesCount > 0 && currentImageIndex < imageSlidesCount && 
+            ((index - 1) % imageSlideInterval === 0 || currentInfoIndex >= infoSlidesCount)) {
+          slideToCopy = imageSlides[currentImageIndex]
+        } else if (currentInfoIndex < infoSlidesCount) {
+          slideToCopy = carouselData.infoSlides[currentInfoIndex]
+        }
+      }
+    }
+    
+    if (!slideToCopy) return
+    
+    const copiedSlide = {
+      ...slideToCopy,
+      title: `${slideToCopy.title} (Copy)`,
+      id: `custom-${Date.now()}`,
+    }
+    
+    // Add copied slide at current position + 1
+    const newCustomSlides = [...customSlides]
+    const insertIndex = Math.max(0, currentSlideIndex - (carouselData ? (2 + (carouselData.infoSlides?.length || 0) + (carouselData.imageSlides?.length || 0)) : 0))
+    newCustomSlides.splice(insertIndex, 0, copiedSlide)
+    setCustomSlides(newCustomSlides)
+    
+    // Navigate to the copied slide
+    setCurrentSlideIndex(currentSlideIndex + 1)
+  }
+
+  const handleDragStart = (e, index) => {
+    setDraggedSlide(index)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', index.toString())
+  }
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverIndex(index)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverIndex(null)
+  }
+
+  const handleDrop = (e, dropIndex) => {
+    e.preventDefault()
+    
+    const draggedIndex = parseInt(e.dataTransfer.getData('text/plain'))
+    
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedSlide(null)
+      setDragOverIndex(null)
+      return
+    }
+
+    // Only allow reordering of custom slides
+    if (!carouselData) {
+      // Reorder custom slides
+      const newCustomSlides = [...customSlides]
+      const draggedSlideData = newCustomSlides[draggedIndex]
+      newCustomSlides.splice(draggedIndex, 1)
+      newCustomSlides.splice(dropIndex, 0, draggedSlideData)
+      setCustomSlides(newCustomSlides)
+      
+      // Update current slide index if needed
+      if (currentSlideIndex === draggedIndex) {
+        setCurrentSlideIndex(dropIndex)
+      } else if (currentSlideIndex > draggedIndex && currentSlideIndex <= dropIndex) {
+        setCurrentSlideIndex(currentSlideIndex - 1)
+      } else if (currentSlideIndex < draggedIndex && currentSlideIndex >= dropIndex) {
+        setCurrentSlideIndex(currentSlideIndex + 1)
+      }
+    } else {
+      // For carousel data, only allow reordering custom slides
+      const totalCarouselSlides = 2 + (carouselData.infoSlides?.length || 0) + (carouselData.imageSlides?.length || 0)
+      
+      if (draggedIndex >= totalCarouselSlides && dropIndex >= totalCarouselSlides) {
+        const newCustomSlides = [...customSlides]
+        const customDraggedIndex = draggedIndex - totalCarouselSlides
+        const customDropIndex = dropIndex - totalCarouselSlides
+        
+        const draggedSlideData = newCustomSlides[customDraggedIndex]
+        newCustomSlides.splice(customDraggedIndex, 1)
+        newCustomSlides.splice(customDropIndex, 0, draggedSlideData)
+        setCustomSlides(newCustomSlides)
+        
+        // Update current slide index if needed
+        if (currentSlideIndex === draggedIndex) {
+          setCurrentSlideIndex(dropIndex)
+        } else if (currentSlideIndex > draggedIndex && currentSlideIndex <= dropIndex) {
+          setCurrentSlideIndex(currentSlideIndex - 1)
+        } else if (currentSlideIndex < draggedIndex && currentSlideIndex >= dropIndex) {
+          setCurrentSlideIndex(currentSlideIndex + 1)
+        }
+      }
+    }
+
+    setDraggedSlide(null)
+    setDragOverIndex(null)
   }
 
   const handleExportPDF = async () => {
@@ -368,8 +740,11 @@ function App() {
                     >
                       ← Previous
                     </button>
-                    <button className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200">
-                      +
+                    <button 
+                      onClick={addBlankSlide}
+                      className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                    >
+                      + Add
                     </button>
                     <button
                       onClick={handleExportPDF}
@@ -406,65 +781,214 @@ function App() {
               />
             </div>
 
-            {/* Thumbnails Section */}
-            {carouselData && (
+            {/* Thumbnails Section - Always show when there are slides or custom slides */}
+            {(carouselData || customSlides.length > 0) && (
               <div className="mt-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Thumbnails</h3>
-                <div className="flex space-x-2 overflow-x-auto pb-2">
-                  {Array.from({ length: getTotalSlides() }, (_, index) => {
-                    let slideData = null;
-                    
-                    // Determine which slide data to use based on index
-                    if (index === 0) {
-                      slideData = carouselData.headerSlide;
-                    } else if (index === getTotalSlides() - 1) {
-                      slideData = carouselData.endSlide;
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Thumbnails</h3>
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={addBlankSlide}
+                    className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                  >
+                    + Add Blank
+                  </button>
+                  <button
+                    onClick={() => duplicateSlide(currentSlideIndex)}
+                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center space-x-1"
+                  >
+                    <Copy className="h-3 w-3" />
+                    <span>Duplicate</span>
+                  </button>
+                  {selectedSlides.size > 0 && (
+                    <>
+                      <button
+                        onClick={deleteSelectedSlides}
+                        className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+                      >
+                        Delete ({selectedSlides.size})
+                      </button>
+                      <button
+                        onClick={clearSelection}
+                        className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                  {getTotalSlides() > 1 && (
+                    <button
+                      onClick={selectAllSlides}
+                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      Select All
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              <div className="flex space-x-2 overflow-x-auto pb-2" onDragOver={(e) => e.preventDefault()}>
+                {Array.from({ length: getTotalSlides() }, (_, index) => {
+                  let slideData = null;
+                  let isCustomSlide = false;
+                  
+                  if (!carouselData) {
+                    // No carousel data, check if it's a custom slide
+                    if (index < customSlides.length) {
+                      slideData = customSlides[index];
+                      isCustomSlide = true;
                     } else {
-                      // For middle slides, check if it's an image slide
-                      const hasImageSlide = carouselData.imageSlide && carouselData.imageSlide.generatedImage;
-                      const infoSlidesCount = carouselData.infoSlides.length;
-                      const imageSlidePosition = hasImageSlide ? Math.ceil(infoSlidesCount / 2) + 1 : -1;
-                      
-                      if (hasImageSlide && index === imageSlidePosition) {
-                        slideData = carouselData.imageSlide;
-                      } else if (index < imageSlidePosition || !hasImageSlide) {
-                        // Before image slide or no image slide
-                        const infoIndex = index - 1;
-                        slideData = carouselData.infoSlides[infoIndex] || carouselData.endSlide;
-                      } else {
-                        // After image slide
-                        const infoIndex = index - 2; // Account for header and image slide
-                        slideData = carouselData.infoSlides[infoIndex] || carouselData.endSlide;
-                      }
-                    }
-                    
-                    // Ensure we have valid slide data
-                    if (!slideData) {
                       slideData = { title: `Slide ${index + 1}` };
                     }
+                  } else {
+                    // Determine which slide data to use based on index
+                    const imageSlides = carouselData.imageSlides || [];
+                    const infoSlidesCount = carouselData.infoSlides.length;
+                    const imageSlidesCount = imageSlides.length;
+                    const totalCarouselSlides = 2 + infoSlidesCount + imageSlidesCount;
                     
-                    return (
+                    if (index === 0) {
+                      slideData = carouselData.headerSlide;
+                    } else if (index === totalCarouselSlides - 1) {
+                      slideData = carouselData.endSlide;
+                    } else if (index >= totalCarouselSlides) {
+                      // Custom slide
+                      const customIndex = index - totalCarouselSlides;
+                      slideData = customSlides[customIndex];
+                      isCustomSlide = true;
+                    } else {
+                      // Use the same interleaving logic for thumbnails
+                      const allSlides = []
+                      const infoSlideData = carouselData.infoSlides.map(slide => ({ type: 'info', data: slide }))
+                      const imageSlideData = imageSlides.map(slide => ({ type: 'image', data: slide }))
+                      
+                      let infoIndex = 0
+                      let imageIndex = 0
+                      const maxSlides = Math.max(infoSlidesCount, imageSlidesCount)
+                      
+                      for (let i = 0; i < maxSlides; i++) {
+                        if (infoIndex < infoSlidesCount) {
+                          allSlides.push(infoSlideData[infoIndex])
+                          infoIndex++
+                        }
+                        if (imageIndex < imageSlidesCount) {
+                          allSlides.push(imageSlideData[imageIndex])
+                          imageIndex++
+                        }
+                      }
+                      
+                      // Get the slide data for this index
+                      if (index - 1 < allSlides.length) {
+                        const slide = allSlides[index - 1]
+                        if (slide) {
+                          slideData = slide.data
+                        }
+                      } else {
+                        slideData = carouselData.endSlide
+                      }
+                    }
+                  }
+                  
+                  // Ensure we have valid slide data
+                  if (!slideData) {
+                    slideData = { title: `Slide ${index + 1}` };
+                  }
+                  
+                  const isSelected = selectedSlides.has(index);
+                  const isCurrent = index === currentSlideIndex;
+                  
+                  const isCustomSlideForDrag = !carouselData || index >= (2 + (carouselData.infoSlides?.length || 0) + (carouselData.imageSlides?.length || 0))
+                  
+                  return (
+                    <div 
+                      key={index} 
+                      className="flex-shrink-0 relative"
+                      draggable={isCustomSlideForDrag}
+                      onDragStart={(e) => handleDragStart(e, index)}
+                      onDragOver={(e) => handleDragOver(e, index)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, index)}
+                    >
                       <button
-                        key={index}
                         onClick={() => setCurrentSlideIndex(index)}
-                        className={`flex-shrink-0 w-24 h-16 rounded-lg border-2 overflow-hidden transition-all ${
-                          index === currentSlideIndex 
+                        className={`w-24 h-16 rounded-lg border-2 overflow-hidden transition-all ${
+                          isCurrent 
                             ? 'border-blue-500 shadow-lg' 
+                            : isSelected
+                            ? 'border-red-500 shadow-md'
+                            : dragOverIndex === index
+                            ? 'border-yellow-500 shadow-lg'
                             : 'border-gray-300 hover:border-gray-400'
                         }`}
                       >
-                        <div className="w-full h-full bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center">
+                        <div className={`w-full h-full flex items-center justify-center ${
+                          isCustomSlide 
+                            ? 'bg-gradient-to-br from-green-100 to-emerald-100' 
+                            : 'bg-gradient-to-br from-blue-100 to-indigo-100'
+                        }`}>
                           <div className="text-center p-1">
                             <div className="text-xs font-semibold text-gray-800 truncate">
                               {slideData.title?.substring(0, 20) || `Slide ${index + 1}`}
                             </div>
+                            {isCustomSlide && (
+                              <div className="text-xs text-green-600 font-bold">Custom</div>
+                            )}
                           </div>
                         </div>
                       </button>
-                    );
-                  })}
-                </div>
+                      
+                      {/* Drag handle for custom slides */}
+                      {isCustomSlideForDrag && (
+                        <div className="absolute -left-1 top-1/2 transform -translate-y-1/2 w-3 h-6 bg-gray-400 rounded cursor-move flex items-center justify-center">
+                          <GripVertical className="h-2 w-2 text-white" />
+                        </div>
+                      )}
+                      
+                      {/* Action buttons for custom slides */}
+                      {isCustomSlideForDrag && (
+                        <div className="absolute -top-1 -right-1 flex space-x-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copySlide(index);
+                            }}
+                            className="w-5 h-5 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center text-xs text-white transition-all"
+                            title="Copy slide"
+                          >
+                            <Copy className="h-2 w-2" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteSlide(index);
+                            }}
+                            className="w-5 h-5 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center text-xs text-white transition-all"
+                            title="Delete slide"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      )}
+                      
+                      {/* Selection checkbox */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSlideSelection(index);
+                        }}
+                        className={`absolute -top-1 -left-1 w-5 h-5 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                          isSelected
+                            ? 'bg-red-500 border-red-500 text-white'
+                            : 'bg-white border-gray-300 text-gray-400 hover:border-red-300'
+                        }`}
+                      >
+                        {isSelected && '×'}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
+            </div>
             )}
           </div>
 

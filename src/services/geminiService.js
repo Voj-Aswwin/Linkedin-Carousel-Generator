@@ -1,7 +1,13 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-// Hardcoded API key - replace with your actual key
-const API_KEY = 'AIzaSyDlL8BuFnikAlJ6gI8AS9s3JdE865HpoYI'
+// Get API key from environment variables
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
+
+if (!API_KEY) {
+  console.error('VITE_GEMINI_API_KEY is not defined in environment variables')
+  throw new Error('Gemini API key is required. Please set VITE_GEMINI_API_KEY in your .env file')
+}
+
 const genAI = new GoogleGenerativeAI(API_KEY)
 
 export const generateHeaderSlide = async (userContent) => {
@@ -366,9 +372,21 @@ export const generateCarouselSlides = async (userContent) => {
       ]
     })
     
-    // Enhanced prompt for generating a complete carousel with 3-color scheme
+    // Enhanced prompt for generating a complete carousel optimized for LinkedIn storytelling
     const prompt = `
-    You are an expert LinkedIn carousel designer and content strategist. Create a complete LinkedIn carousel with as many slides as needed to comprehensively cover ALL the content provided. Do not limit the number of slides - use as many as necessary to ensure every important point is included. Based on this content: "${userContent}"
+    You are an expert LinkedIn carousel designer and content strategist with deep expertise in storytelling and engagement optimization. Create a compelling LinkedIn carousel that tells a complete story using strategic image placement and bullet-point formatting.
+
+    Based on this content: "${userContent}"
+    
+    STORYTELLING APPROACH:
+    - Use 3-4 strategically placed image slides to enhance the narrative flow
+    - Images should be part of the story, not just decorative headers
+    - Place images at key story moments: problem introduction, solution reveal, results showcase, call-to-action
+    - INTERLEAVE image slides with info slides throughout the carousel for optimal engagement
+    - Create a rhythm: info slide → image slide → info slide → image slide (when possible)
+    - Use bullet points AND concise paragraphs for better LinkedIn engagement
+    - Remove asterisk formatting - keep content clean and professional
+    - IMPORTANT: Use the SAME text formatting (fontFamily, fontSize, color, fontWeight) for ALL slides except the header slide
     
     FIRST, analyze the content and generate a cohesive 3-color scheme:
     1. BACKGROUND COLOR: Choose a primary background color that reflects the content's mood and industry
@@ -408,45 +426,49 @@ export const generateCarouselSlides = async (userContent) => {
         "accentColor": "#hexcolor",
         "layout": "centered" | "left-aligned" | "right-aligned"
       },
-      "imageSlide": {
-        "imagePrompt": "A detailed prompt for AI image generation that captures the essence of the content (e.g., 'A professional illustration showing [key concept], modern style, clean background, no text or symbols')",
-        "title": "A compelling title that complements the image (max 8 words)",
-        "subtitle": "Supporting text that adds value and context to the image (max 20 words)",
-        "background": {
-          "type": "gradient" | "solid" | "pattern",
-          "color1": "#hexcolor",
-          "color2": "#hexcolor",
-          "pattern": "dots" | "lines" | "geometric" | "none"
-        },
-        "titleStyle": {
-          "fontSize": 50-70,
-          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
-          "color": "#hexcolor",
-          "fontWeight": "bold" | "normal"
-        },
-        "subtitleStyle": {
-          "fontSize": 30-40,
-          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
-          "color": "#hexcolor",
-          "fontWeight": "normal" | "bold"
-        },
-        "accentColor": "#hexcolor",
-        "layout": "centered" | "left-aligned" | "right-aligned"
-      },
+      "imageSlides": [
+        {
+          "slideNumber": 1,
+          "imagePrompt": "A detailed prompt for AI image generation that captures a key story moment (e.g., 'A professional illustration showing [key concept], modern style, clean background, no text or symbols')",
+          "title": "A compelling title that advances the story (max 8 words)",
+          "subtitle": "Supporting text that adds value and context to the image (max 20 words)",
+          "background": {
+            "type": "gradient" | "solid" | "pattern",
+            "color1": "#hexcolor",
+            "color2": "#hexcolor",
+            "pattern": "dots" | "lines" | "geometric" | "none"
+          },
+          "titleStyle": {
+            "fontSize": 50-70,
+            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+            "color": "#hexcolor",
+            "fontWeight": "bold" | "normal"
+          },
+          "subtitleStyle": {
+            "fontSize": 30-40,
+            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+            "color": "#hexcolor",
+            "fontWeight": "normal" | "bold"
+          },
+          "accentColor": "#hexcolor",
+          "layout": "centered" | "left-aligned" | "right-aligned"
+        }
+      ],
       "infoSlides": [
         {
           "slideNumber": 1,
           "title": "Main slide title",
-          "subheadings": [
-            {
-              "heading": "Subheading 1",
-              "keyPoints": ["Key point 1 in 2-3 lines", "Key point 2 in 2-3 lines"]
-            },
-            {
-              "heading": "Subheading 2", 
-              "keyPoints": ["Key point 1 in 2-3 lines", "Key point 2 in 2-3 lines"]
-            }
+          "slidePattern": "bulletPoints" | "singleParagraph" | "impactfulLine" | "mixedContent",
+          "bulletPoints": [
+            "Key point 1 in 1-2 lines maximum",
+            "Key point 2 in 1-2 lines maximum",
+            "Key point 3 in 1-2 lines maximum"
           ],
+          "paragraphs": [
+            "Concise paragraph with solid information that conveys the main message effectively. Keep it engaging and informative.",
+            "Another paragraph that adds depth to the content while maintaining readability and impact."
+          ],
+          "impactfulLine": "One powerful, memorable statement that captures the essence of the message",
           "background": {
             "type": "gradient" | "solid" | "pattern",
             "color1": "#hexcolor",
@@ -459,14 +481,14 @@ export const generateCarouselSlides = async (userContent) => {
             "color": "#hexcolor",
             "fontWeight": "bold" | "normal"
           },
-          "subheadingStyle": {
-            "fontSize": 35-45,
+          "bulletStyle": {
+            "fontSize": 30-40,
             "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
             "color": "#hexcolor",
-            "fontWeight": "bold" | "normal"
+            "fontWeight": "normal"
           },
-          "textStyle": {
-            "fontSize": 30-40,
+          "paragraphStyle": {
+            "fontSize": 24-32,
             "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
             "color": "#hexcolor",
             "fontWeight": "normal"
@@ -508,39 +530,52 @@ export const generateCarouselSlides = async (userContent) => {
       }
     }
     
-    Guidelines:
-    1. Break the content into as many information slides as needed to cover ALL the content comprehensively
-    2. Each info slide should have exactly 1-2 subheadings (maximum 2 to prevent overcrowding)
-    3. Each subheading should have 1-2 key points (2-3 lines each)
-    4. Use EXACTLY the same background colors for ALL info slides (color1 and color2)
-    5. Use the same accent color for ALL info slides
-    6. IMPORTANT: All info slides must use the SAME color palette as the header slide for consistency
-    7. Maintain visual coherence across all slides while keeping info slides distinct from header
-    8. Make each slide visually distinct but cohesive
-    9. Ensure mobile-first design for LinkedIn
-    10. Use professional, engaging typography
-    11. Create visual hierarchy with proper spacing
-    12. Include relevant statistics or data points where applicable
-    13. Make content scannable and LinkedIn-optimized
-    14. IMPORTANT: All info slides must have identical background colors for consistency
-    15. CRITICAL: Generate as many slides as necessary to cover ALL user content - do not limit to 2-4 slides
-    16. Ensure every important point from the user's content is included across the slides
-    17. If content is extensive, create more slides rather than cramming content into fewer slides
-    18. CRITICAL: Always create a final "end slide" with a compelling call-to-action (CTA)
-    19. The end slide should include: a strong CTA message, contact information, or next steps
-    20. End slide should use the same color theme as other slides but with a distinct "conclusion" feel
-    21. CRITICAL: Use a consistent 3-color scheme throughout all slides (Background, Text, Accent)
-    22. IMPORTANT: Make important words and phrases BOLD and use the accent color for emphasis
-    23. Use **bold** formatting for key statistics, important terms, and compelling phrases
-    24. Apply the accent color to bold text to make it stand out
-    25. Ensure the 3-color scheme is professional and accessible
-    26. CRITICAL: Always create an "imageSlide" that will feature an AI-generated image
-    27. The imageSlide should be placed strategically in the middle of the carousel to break up text-heavy slides
-    28. The imagePrompt should be detailed and descriptive (e.g., "A modern illustration of [concept], professional style, clean background, no text or symbols, vibrant colors")
-    29. The imageSlide should visually represent the core concept or key message of the content
-    30. Keep the imageSlide text minimal but impactful - the image is the focus
+    STORYTELLING GUIDELINES:
+    1. Create 3-4 image slides that are strategically placed throughout the story
+    2. Each image slide should represent a key story moment: problem, solution, results, or call-to-action
+    3. INTERLEAVE image slides with info slides for optimal engagement rhythm
+    4. Create a pattern: info → image → info → image (when possible) to maintain audience interest
+    5. USE MULTIPLE SLIDE PATTERNS to prevent monotony and enhance narrative flow:
+       - "bulletPoints": Traditional bullet points (3-5 points max)
+       - "singleParagraph": One impactful paragraph that tells a complete story
+       - "impactfulLine": One powerful, memorable statement (great for emphasis)
+       - "mixedContent": Combination of bullets + paragraph for complex topics
+    6. VARY the slide patterns strategically:
+       - Use "impactfulLine" for key insights or statistics
+       - Use "singleParagraph" for storytelling moments
+       - Use "bulletPoints" for lists and processes
+       - Use "mixedContent" for comprehensive topics
+    7. Remove all asterisk formatting - keep content clean and professional
+    8. Each bullet point should be 1-2 lines maximum
+    9. Single paragraphs should be 2-4 sentences maximum
+    10. Impactful lines should be 1-2 sentences maximum
+    11. Use the same background colors for ALL info slides (color1 and color2)
+    12. Use the same accent color for ALL slides
+    13. CRITICAL: Use IDENTICAL text formatting for ALL slides except header:
+       - Same fontFamily for all bulletStyle, paragraphStyle, and textStyle
+       - Same fontSize ratios (bulletStyle: 30-40, paragraphStyle: 24-32, textStyle: 20-28)
+       - Same color scheme for all text elements
+       - Same fontWeight patterns
+    14. Ensure mobile-first design for LinkedIn
+    15. Create visual hierarchy with proper spacing
+    16. Include relevant statistics or data points where applicable
+    17. Make content scannable and LinkedIn-optimized
+    18. Generate as many slides as necessary to cover ALL user content
+    19. Ensure every important point from the user's content is included
+    20. Always create a final "end slide" with a compelling call-to-action
+    21. Use a consistent 3-color scheme throughout all slides
+    22. Make important words and phrases BOLD using the accent color for emphasis
+    23. Image slides should advance the narrative, not just break up text
+    24. Each image should have a clear purpose in the story flow
+    25. Keep image slide text minimal but impactful - the image tells the story
+    26. ALTERNATE between content types to prevent audience fatigue and maintain engagement
+    27. CREATE RHYTHM: Mix different slide patterns to create a dynamic, engaging flow
+    28. CRITICAL: Every info slide MUST have content - never create empty slides
+    29. If a slide pattern doesn't have content, use bulletPoints with relevant information
+    30. Ensure bulletPoints, paragraphs, or impactfulLine are always populated with meaningful content
+    31. Never leave any info slide without at least one content element
     
-    Create a complete, professional LinkedIn carousel that tells a compelling story and covers ALL the user's content comprehensively. Do not leave out any important points - create additional slides if needed to ensure complete coverage. ALWAYS end with a call-to-action slide.
+    Create a complete, professional LinkedIn carousel that tells a compelling story with strategic image placement and bullet-point formatting. Focus on engagement and storytelling rather than just information delivery.
     `
 
     const result = await model.generateContent(prompt)
@@ -557,15 +592,21 @@ export const generateCarouselSlides = async (userContent) => {
           throw new Error('Missing required fields in AI response')
         }
         
-        // If imageSlide exists and has an imagePrompt, generate the image
-        if (parsedData.imageSlide?.imagePrompt) {
-          console.log('Generating image for carousel...')
-          const generatedImage = await generateImageFromPrompt(parsedData.imageSlide.imagePrompt)
-          if (generatedImage) {
-            parsedData.imageSlide.generatedImage = generatedImage
-            console.log('Image generated successfully!')
-          } else {
-            console.warn('Failed to generate image, slide will not include image')
+        // Generate images for all image slides
+        if (parsedData.imageSlides && parsedData.imageSlides.length > 0) {
+          console.log(`Generating ${parsedData.imageSlides.length} images for carousel...`)
+          for (let i = 0; i < parsedData.imageSlides.length; i++) {
+            const imageSlide = parsedData.imageSlides[i]
+            if (imageSlide.imagePrompt) {
+              console.log(`Generating image ${i + 1}/${parsedData.imageSlides.length}...`)
+              const generatedImage = await generateImageFromPrompt(imageSlide.imagePrompt)
+              if (generatedImage) {
+                imageSlide.generatedImage = generatedImage
+                console.log(`Image ${i + 1} generated successfully!`)
+              } else {
+                console.warn(`Failed to generate image ${i + 1}, slide will not include image`)
+              }
+            }
           }
         }
         
@@ -605,40 +646,48 @@ export const generateCarouselSlides = async (userContent) => {
         accentColor: "#ffd700",
         layout: "centered"
       },
-      imageSlide: {
-        imagePrompt: "A professional illustration of digital transformation and innovation, modern style, vibrant colors, no text",
-        title: "Visualizing Success",
-        subtitle: "Transform your content into engaging visual stories",
-        background: {
-          type: "gradient",
-          color1: "#667eea",
-          color2: "#764ba2"
-        },
-        titleStyle: {
-          fontSize: 60,
-          fontFamily: "Arial",
-          color: "#ffffff",
-          fontWeight: "bold"
-        },
-        subtitleStyle: {
-          fontSize: 35,
-          fontFamily: "Arial",
-          color: "#f8f9fa",
-          fontWeight: "normal"
-        },
-        accentColor: "#ffd700",
-        layout: "centered"
-      },
+      imageSlides: [
+        {
+          slideNumber: 1,
+          imagePrompt: "A professional illustration of digital transformation and innovation, modern style, vibrant colors, no text",
+          title: "Visualizing Success",
+          subtitle: "Transform your content into engaging visual stories",
+          background: {
+            type: "gradient",
+            color1: "#667eea",
+            color2: "#764ba2"
+          },
+          titleStyle: {
+            fontSize: 60,
+            fontFamily: "Arial",
+            color: "#ffffff",
+            fontWeight: "bold"
+          },
+          subtitleStyle: {
+            fontSize: 35,
+            fontFamily: "Arial",
+            color: "#f8f9fa",
+            fontWeight: "normal"
+          },
+          accentColor: "#ffd700",
+          layout: "centered"
+        }
+      ],
       infoSlides: [
         {
           slideNumber: 1,
           title: "Key Insights",
-          subheadings: [
-            {
-              heading: "Main Point",
-              keyPoints: ["Your content will be broken down into key insights", "Each point will be clearly presented"]
-            }
+          slidePattern: "bulletPoints",
+          bulletPoints: [
+            "Your content will be broken down into key insights",
+            "Each point will be clearly presented",
+            "Optimized for LinkedIn engagement"
           ],
+          paragraphs: [
+            "This carousel generator transforms your content into engaging visual stories that capture attention and drive engagement on LinkedIn.",
+            "Each slide is carefully crafted to maintain reader interest while delivering your message effectively."
+          ],
+          impactfulLine: "Transform your content into engaging visual stories that drive LinkedIn engagement.",
           background: {
             type: "gradient",
             color1: "#667eea", // Same as header slide for consistency
@@ -650,14 +699,14 @@ export const generateCarouselSlides = async (userContent) => {
             color: "#ffffff",
             fontWeight: "bold"
           },
-          subheadingStyle: {
-            fontSize: 40,
-            fontFamily: "Arial",
-            color: "#ffffff",
-            fontWeight: "bold"
-          },
-          textStyle: {
+          bulletStyle: {
             fontSize: 35,
+            fontFamily: "Arial",
+            color: "#f8f9fa",
+            fontWeight: "normal"
+          },
+          paragraphStyle: {
+            fontSize: 28,
             fontFamily: "Arial",
             color: "#f8f9fa",
             fontWeight: "normal"

@@ -1,0 +1,26 @@
+---
+description: This is a React-based LinkedIn Carousel Generator that converts text posts into editable carousel slides using AI (Gemini), Fabric.js for canvas editing, and PDF export functionality.
+globs:
+alwaysApply: true
+
+Technology Stack Rules
+- Framework: React 18 with Vite
+- Styling: Tailwind CSS with custom primary color palette
+- Canvas: Fabric.js for interactive canvas editing
+- AI: Google Generative AI (Gemini) for content generation
+- PDF: jsPDF + html2canvas for export
+- Icons: Lucide React
+- Build: Vite with ES modules
+
+File Structure Rules
+- src/App.jsx: Main application component with state management
+- src/components/: React components (CanvasEditor, ToolPanel, PropertiesPanel, etc.)
+- src/services/: Business logic (geminiService.js, pdfExportService.js)
+- src/utils/: Utility functions (canvasGenerator.js)
+- All components use forwardRef for imperative handles
+- Services are singleton classes
+
+Specific Instructions
+- Always go for the most simplistic solution. 
+- This is a basic MVP. SO Optimize for Speed and Quality over scale
+---
