@@ -48,6 +48,7 @@ function App() {
   const [selectedSlides, setSelectedSlides] = useState(new Set())
   const [draggedSlide, setDraggedSlide] = useState(null)
   const [dragOverIndex, setDragOverIndex] = useState(null)
+  const [slideStates, setSlideStates] = useState({}) // Store slide states for persistence
   const canvasEditorRef = useRef(null)
 
   const handleGenerate = async () => {
@@ -546,6 +547,16 @@ function App() {
     setDragOverIndex(null)
   }
 
+  // Handle slide updates and save state
+  const handleSlideUpdate = (data) => {
+    if (data.slideState) {
+      setSlideStates(prev => ({
+        ...prev,
+        [currentSlideIndex]: data.slideState
+      }))
+    }
+  }
+
   const handleExportPDF = async () => {
     if (!carouselData) return
     
@@ -560,17 +571,9 @@ function App() {
       
       console.log('Starting PDF generation...')
       
-      // Get current canvas state from CanvasEditor
-      const currentCanvasState = canvasEditorRef.current?.getCurrentCanvasState?.()
-      
-      if (currentCanvasState) {
-        // Use current canvas state for PDF generation
-        await pdfExportService.generatePDFFromCanvasState(currentCanvasState, filename)
-      } else {
-        // Fallback to original method
-        await pdfExportService.generateCarouselPDF(carouselData, headerPicture)
-        pdfExportService.downloadPDF(filename)
-      }
+      // Export entire carousel as PDF
+      await pdfExportService.generateCarouselPDF(carouselData, headerPicture)
+      pdfExportService.downloadPDF(filename)
       
       console.log('PDF exported successfully!')
     } catch (error) {
@@ -772,12 +775,13 @@ function App() {
                 currentSlideIndex={currentSlideIndex}
                 totalSlides={getTotalSlides()}
                 headerPicture={headerPicture}
-                onSlideUpdate={(data) => console.log('Slide updated:', data)}
+                onSlideUpdate={handleSlideUpdate}
                 onSelectedObjectChange={setSelectedObject}
                 onUndoHistoryChange={setUndoHistory}
                 onRedoHistoryChange={setRedoHistory}
                 onPhoneFramePhotosChange={setPhoneFramePhotos}
                 onSelectedPhonePhotoChange={setSelectedPhonePhoto}
+                savedStates={slideStates}
               />
             </div>
 

@@ -14,7 +14,8 @@ const CanvasEditor = forwardRef(({
   onUndoHistoryChange,
   onRedoHistoryChange,
   onPhoneFramePhotosChange,
-  onSelectedPhonePhotoChange
+  onSelectedPhonePhotoChange,
+  savedStates = {}
 }, ref) => {
   const canvasRef = useRef(null)
   const fabricCanvasRef = useRef(null)
@@ -28,6 +29,8 @@ const CanvasEditor = forwardRef(({
   const [selectedPhonePhoto, setSelectedPhonePhoto] = useState(0)
   const [isTextEditing, setIsTextEditing] = useState(false)
   const [forceUpdate, setForceUpdate] = useState(0) // Counter to force re-renders
+  const updateTimeoutRef = useRef(null)
+  const previousSlideIndexRef = useRef(currentSlideIndex)
 
 
   // Handle keyboard events
@@ -78,30 +81,33 @@ const CanvasEditor = forwardRef(({
     // Handle object selection
     canvas.on('selection:created', (e) => {
       setSelectedObject(e.selected[0])
-      onSelectedObjectChange?.(e.selected[0])
+      setTimeout(() => onSelectedObjectChange?.(e.selected[0]), 0)
     })
 
     canvas.on('selection:updated', (e) => {
       setSelectedObject(e.selected[0])
-      onSelectedObjectChange?.(e.selected[0])
+      setTimeout(() => onSelectedObjectChange?.(e.selected[0]), 0)
     })
 
     canvas.on('selection:cleared', () => {
       setSelectedObject(null)
-      onSelectedObjectChange?.(null)
+      setTimeout(() => onSelectedObjectChange?.(null), 0)
     })
 
     // Track all actions for undo functionality
     canvas.on('object:added', () => {
       saveToHistory()
+      handleObjectUpdate()
     })
 
     canvas.on('object:removed', () => {
       saveToHistory()
+      handleObjectUpdate()
     })
 
     canvas.on('object:modified', () => {
       saveToHistory()
+      handleObjectUpdate()
     })
 
     canvas.on('object:moving', (e) => {
@@ -131,6 +137,7 @@ const CanvasEditor = forwardRef(({
     canvas.on('object:moved', () => {
       // Save state after moving is complete
       saveToHistory()
+      handleObjectUpdate()
     })
 
     canvas.on('object:scaling', (e) => {
@@ -160,6 +167,7 @@ const CanvasEditor = forwardRef(({
     canvas.on('object:scaled', () => {
       // Save state after scaling is complete
       saveToHistory()
+      handleObjectUpdate()
     })
 
     canvas.on('object:rotating', (e) => {
@@ -179,16 +187,19 @@ const CanvasEditor = forwardRef(({
     canvas.on('object:rotated', () => {
       // Save state after rotating is complete
       saveToHistory()
+      handleObjectUpdate()
     })
 
     canvas.on('text:changed', () => {
       // Save state when text content changes
       saveToHistory()
+      handleObjectUpdate()
     })
 
     canvas.on('text:editing:exited', () => {
       // Save state when text editing is finished
       saveToHistory()
+      handleObjectUpdate()
     })
 
 
@@ -336,6 +347,7 @@ const CanvasEditor = forwardRef(({
           updateTextHighlight(obj)
         }
       }
+      handleObjectUpdate()
     })
 
     // Handle object scaling and rotation
@@ -344,6 +356,7 @@ const CanvasEditor = forwardRef(({
       if (obj === selectedObject) {
         setForceUpdate(prev => prev + 1)
       }
+      handleObjectUpdate()
     })
 
     canvas.on('object:rotating', (e) => {
@@ -351,6 +364,7 @@ const CanvasEditor = forwardRef(({
       if (obj === selectedObject) {
         setForceUpdate(prev => prev + 1)
       }
+      handleObjectUpdate()
     })
 
     // Handle window resize
@@ -385,6 +399,9 @@ const CanvasEditor = forwardRef(({
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current)
+      }
       canvas.dispose()
     }
   }, [])
@@ -404,6 +421,26 @@ const CanvasEditor = forwardRef(({
       setIsInitialLoad(true)
       setIsLoading(true)
       const canvas = fabricCanvasRef.current
+      
+      // Check if we have a saved state for this slide first, but only if we're switching slides
+      const savedState = savedStates[currentSlideIndex]
+      const isSlideChange = previousSlideIndexRef.current !== currentSlideIndex
+      
+      if (savedState && savedState.objects && isSlideChange) {
+        // Restore saved state instead of clearing and re-rendering
+        // Set loading to false first to prevent state updates during restoration
+        setIsLoading(false)
+        canvas.loadFromJSON(savedState.objects, () => {
+          canvas.renderAll()
+          setIsInitialLoad(false)
+        })
+        previousSlideIndexRef.current = currentSlideIndex
+        return // Exit early, don't re-render from AI data
+      }
+      
+      // Update the previous slide index reference
+      previousSlideIndexRef.current = currentSlideIndex
+      
       canvas.clear()
 
       // Set background
@@ -424,14 +461,22 @@ const CanvasEditor = forwardRef(({
       // Calculate scale factor for proper element sizing
       const scaleFactor = canvas.width / 1080 // Scale based on current canvas width vs original width
 
-      // Calculate maximum width for text (95% of canvas width for better text wrapping)
-      const maxTextWidth = canvas.width * 0.95
+        // Calculate maximum width for text (98% of canvas width for better space utilization)
+        const maxTextWidth = canvas.width * 0.98
 
-      // Helper function to wrap text with better readability
+      // Helper function to wrap text with better readability and word limit enforcement
       const wrapText = (text, maxWidth, fontSize) => {
         const words = text.split(' ')
         const lines = []
         let currentLine = ''
+
+        // Word limit rule: 15-40 words per slide for optimal readability
+        const wordCount = words.length
+        const isWithinWordLimit = wordCount >= 15 && wordCount <= 40
+        
+        if (!isWithinWordLimit) {
+          console.warn(`Word count (${wordCount}) is outside optimal range (15-40 words)`)
+        }
 
         // More conservative character width estimation
         const avgCharWidth = fontSize * 0.5 // Even more conservative
@@ -1663,13 +1708,27 @@ const CanvasEditor = forwardRef(({
     }
 
     renderSlide()
-  }, [slideData, slideType])
+  }, [slideData, slideType, currentSlideIndex])
+
 
   const handleObjectUpdate = () => {
-    if (onSlideUpdate && fabricCanvasRef.current) {
-      const canvas = fabricCanvasRef.current
-      const objects = canvas.getObjects()
-      onSlideUpdate({ objects, canvas })
+    if (onSlideUpdate && fabricCanvasRef.current && !isInitialLoad && !isLoading) {
+      // Clear existing timeout
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current)
+      }
+      
+      // Debounce the update to prevent too frequent calls
+      updateTimeoutRef.current = setTimeout(() => {
+        const canvas = fabricCanvasRef.current
+        const objects = canvas.getObjects()
+        // Save the current slide state whenever objects are modified
+        const slideState = {
+          objects: canvas.toJSON(),
+          timestamp: Date.now()
+        }
+        onSlideUpdate({ objects, canvas, slideState })
+      }, 300) // 300ms debounce
     }
   }
 
@@ -1733,13 +1792,13 @@ const CanvasEditor = forwardRef(({
       const newHistory = [...prev, state]
       // Keep only last 10 states as requested
       const updatedHistory = newHistory.slice(-10)
-      onUndoHistoryChange?.(updatedHistory)
+      setTimeout(() => onUndoHistoryChange?.(updatedHistory), 0)
       return updatedHistory
     })
 
     // Clear redo history when new action is performed
     setRedoHistory([])
-    onRedoHistoryChange?.([])
+    setTimeout(() => onRedoHistoryChange?.([]), 0)
   }
 
   const handleUndo = () => {
@@ -2539,8 +2598,35 @@ const CanvasEditor = forwardRef(({
     getCurrentCanvasState
   }))
 
+  // Calculate word count for current slide
+  const getWordCount = () => {
+    if (!slideData) return 0
+    const text = slideData.title + ' ' + slideData.subtitle + ' ' + 
+                (slideData.bulletPoints ? slideData.bulletPoints.join(' ') : '') +
+                (slideData.paragraphs ? slideData.paragraphs.join(' ') : '') +
+                (slideData.impactfulLine || '') +
+                (slideData.ctaText || '')
+    return text.trim().split(/\s+/).filter(word => word.length > 0).length
+  }
+
+  const wordCount = getWordCount()
+  const isWithinWordLimit = wordCount >= 15 && wordCount <= 40
+
   return (
     <div className="space-y-4">
+      {/* Word Count Display */}
+      <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
+        <div className="flex items-center space-x-2">
+          <span className="text-sm font-medium text-gray-700">Word Count:</span>
+          <span className={`text-sm font-bold ${isWithinWordLimit ? 'text-green-600' : 'text-orange-600'}`}>
+            {wordCount}
+          </span>
+        </div>
+        <div className="text-xs text-gray-500">
+          Optimal: 15-40 words
+        </div>
+      </div>
+
       {/* Canvas */}
       <div className="card">
         <div className="border-2 border-gray-200 rounded-lg overflow-hidden flex justify-center bg-gray-50 p-2">
