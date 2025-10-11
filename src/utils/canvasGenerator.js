@@ -226,90 +226,113 @@ export class CanvasGenerator {
     }
 
     if (slideType === 'header') {
-      // Create header slide content
-      const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
+      const padding = 30 * scaleFactor;
+      const textColor = slideData.subtitleStyle.color || '#333333';
+
+      // Social Handle
+      const socialHandle = new fabric.Text(slideData.socialHandle || '@socialhandle', {
+          left: padding,
+          top: padding,
+          fontFamily: slideData.subtitleStyle.fontFamily || 'Arial',
+          fontSize: 18 * scaleFactor,
+          fill: textColor,
+          selectable: false,
+      });
+
+      // Page Number
+      const pageNumber = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
+          left: this.slideWidth - padding,
+          top: padding,
+          fontFamily: slideData.subtitleStyle.fontFamily || 'Arial',
+          fontSize: 18 * scaleFactor,
+          fill: textColor,
+          originX: 'right',
+          selectable: false,
+      });
+
+      // Title
+      const wrappedTitle = wrapText(slideData.title, this.slideWidth - (padding * 2), (slideData.titleStyle.fontSize || 80) * scaleFactor);
       const title = createFormattedText(wrappedTitle, {
-        left: 0, // Position relative to group center
-        top: 0, // Position relative to group center
-        fontFamily: slideData.titleStyle.fontFamily,
-        fontSize: slideData.titleStyle.fontSize * scaleFactor,
-        fill: slideData.titleStyle.color,
-        fontWeight: slideData.titleStyle.fontWeight,
-        textAlign: 'center',
-        originX: 'center',
-        originY: 'center',
-        width: maxTextWidth,
-        splitByGrapheme: true,
-        lineHeight: 1.6
-      })
+          left: padding,
+          top: this.slideHeight * 0.45,
+          originY: 'center',
+          fontFamily: slideData.titleStyle.fontFamily || 'Arial',
+          fontSize: (slideData.titleStyle.fontSize || 80) * scaleFactor,
+          fill: slideData.titleStyle.color || '#000000',
+          fontWeight: slideData.titleStyle.fontWeight || 'bold',
+          textAlign: 'left',
+          width: this.slideWidth - (padding * 2),
+          lineHeight: 1.2,
+      });
 
-      const titleHighlight = createTextHighlight(title, slideData.accentColor, 0.3)
-      titleHighlight.highlightFor = title
+      // Arrow Icon
+      const arrowContainerSize = 50 * scaleFactor;
+      const arrowContainer = new fabric.Rect({
+          width: arrowContainerSize,
+          height: arrowContainerSize,
+          fill: slideData.accentColor || '#000000',
+          rx: 10 * scaleFactor,
+          ry: 10 * scaleFactor,
+          originX: 'center',
+          originY: 'center',
+      });
 
-      // Create a group for title and its highlight so they move together
-      const titleGroup = new fabric.Group([titleHighlight, title], {
-        left: this.slideWidth / 2,
-        top: headerPicture ? this.slideHeight * 0.5 : this.slideHeight * 0.3,
-        originX: 'center',
-        originY: 'center',
-        selectable: false,
-        evented: false
-      })
+      const arrow = new fabric.Text('→', {
+          fontSize: 30 * scaleFactor,
+          fill: slideData.background.color1,
+          originX: 'center',
+          originY: 'center',
+      });
 
-      const wrappedSubtitle = wrapText(slideData.subtitle, maxTextWidth, slideData.subtitleStyle.fontSize * scaleFactor)
-      const subtitle = createFormattedText(wrappedSubtitle, {
-        left: this.slideWidth / 2,
-        top: headerPicture ? this.slideHeight * 0.75 : this.slideHeight * 0.6,
-        fontFamily: slideData.subtitleStyle.fontFamily,
-        fontSize: slideData.subtitleStyle.fontSize * scaleFactor,
-        fill: slideData.subtitleStyle.color,
-        fontWeight: slideData.subtitleStyle.fontWeight,
-        textAlign: 'center',
-        originX: 'center',
-        originY: 'center',
-        width: maxTextWidth,
-        splitByGrapheme: true,
-        lineHeight: 1.6
-      })
+      const arrowGroup = new fabric.Group([arrowContainer, arrow], {
+          left: this.slideWidth - padding - (arrowContainerSize / 2),
+          top: this.slideHeight - padding - (arrowContainerSize / 2),
+          selectable: false,
+      });
 
-      const accentRect = new fabric.Rect({
-        left: this.slideWidth / 2,
-        top: headerPicture ? this.slideHeight * 0.7 : this.slideHeight * 0.5,
-        width: 200 * scaleFactor,
-        height: 4 * scaleFactor,
-        fill: slideData.accentColor,
-        originX: 'center',
-        originY: 'center'
-      })
+      canvas.add(socialHandle, pageNumber, title, arrowGroup);
 
-      // Add header picture if provided
-      if (headerPicture && slideType === 'header') {
+      // Author Info
+      if (slideData.authorImageUrl && slideData.authorName) {
         return new Promise((resolve) => {
-          fabric.Image.fromURL(headerPicture, (img) => {
-            const maxWidth = this.slideWidth * 0.4
-            const maxHeight = this.slideHeight * 0.3
-            const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1)
-            
-            img.set({
-              left: this.slideWidth / 2,
-              top: this.slideHeight * 0.15,
-              scaleX: scale,
-              scaleY: scale,
-              originX: 'center',
-              originY: 'center'
-            })
-            
-            canvas.add(titleGroup, subtitle, accentRect, img)
-            this.addProgressBar(canvas, currentSlideIndex, totalSlides, slideData.accentColor, scaleFactor)
-            canvas.renderAll()
-            resolve(canvas)
-          })
-        })
+            fabric.Image.fromURL(slideData.authorImageUrl, (img) => {
+                const authorImageSize = 50 * scaleFactor;
+
+                const circle = new fabric.Circle({
+                    radius: authorImageSize / 2,
+                    originX: 'center',
+                    originY: 'center',
+                });
+
+                img.scaleToWidth(authorImageSize);
+                img.set({
+                    clipPath: circle,
+                    originX: 'center',
+                    originY: 'center',
+                });
+
+                const authorNameText = new fabric.Text(slideData.authorName, {
+                    left: authorImageSize / 2 + 10 * scaleFactor,
+                    top: 0,
+                    fontFamily: slideData.subtitleStyle.fontFamily || 'Arial',
+                    fontSize: 20 * scaleFactor,
+                    fill: textColor,
+                    fontWeight: 'bold',
+                    originX: 'left',
+                    originY: 'center',
+                });
+
+                const authorGroup = new fabric.Group([img, authorNameText], {
+                    left: padding + authorImageSize / 2,
+                    top: this.slideHeight - padding - authorImageSize / 2,
+                });
+
+                canvas.add(authorGroup);
+                canvas.renderAll();
+                resolve(canvas);
+            }, { crossOrigin: 'anonymous' });
+        });
       }
-      
-      canvas.add(titleGroup, subtitle, accentRect)
-      this.addProgressBar(canvas, currentSlideIndex, totalSlides, slideData.accentColor, scaleFactor)
-      
     } else if (slideType === 'info') {
       // Create info slide content with bullet points
       console.log('Rendering info slide with data:', slideData)
