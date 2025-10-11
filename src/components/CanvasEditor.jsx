@@ -563,6 +563,7 @@ const CanvasEditor = forwardRef(({
       }
 
       if (slideType === 'header') {
+        // Header slide - background, header picture, and title
         // Check if this is a blank slide (no content)
         if (!slideData.title || slideData.title.trim() === '') {
           // For blank slides, just set background and return
@@ -572,122 +573,75 @@ const CanvasEditor = forwardRef(({
           return
         }
 
-        const padding = 30 * scaleFactor;
-        const textColor = getStyleProperty(slideData.subtitleStyle, 'color', '#333333');
-
-        // Social Handle (Top Left)
-        const socialHandle = new fabric.Text(slideData.socialHandle || '@socialhandle', {
-          left: padding,
-          top: padding,
-          fontFamily: getStyleProperty(slideData.subtitleStyle, 'fontFamily', 'Arial'),
-          fontSize: 18 * scaleFactor,
-          fill: textColor,
-          selectable: false,
-          evented: false,
-        });
-
-        // Page Number (Top Right)
-        const pageNumber = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
-          left: canvas.width - padding,
-          top: padding,
-          fontFamily: getStyleProperty(slideData.subtitleStyle, 'fontFamily', 'Arial'),
-          fontSize: 18 * scaleFactor,
-          fill: textColor,
-          originX: 'right',
-          selectable: false,
-          evented: false,
-        });
-
-        // Title
-        const wrappedTitle = wrapText(slideData.title, canvas.width - (padding * 2), getStyleProperty(slideData.titleStyle, 'fontSize', 80) * scaleFactor);
+        // Create title text
+        const wrappedTitle = wrapText(slideData.title, maxTextWidth, getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor)
         const title = createFormattedText(wrappedTitle, {
-          left: padding,
-          top: canvas.height * 0.45,
-          originY: 'center',
-          originX: 'left',
+          left: canvas.width / 2,
+          top: headerPicture ? canvas.height * 0.7 : canvas.height * 0.5, // Lower if header picture is present
           fontFamily: getStyleProperty(slideData.titleStyle, 'fontFamily', 'Arial'),
-          fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 80) * scaleFactor,
+          fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor,
           fill: getStyleProperty(slideData.titleStyle, 'color', '#000000'),
           fontWeight: getStyleProperty(slideData.titleStyle, 'fontWeight', 'bold'),
-          textAlign: 'left',
-          width: canvas.width - (padding * 2),
+          textAlign: 'center',
+          originX: 'center',
+          originY: 'center',
+          width: maxTextWidth,
           splitByGrapheme: true,
           selectable: true,
           editable: true,
           evented: true,
-          lineHeight: 1.2,
-        });
-        makeTextEditable(title);
+          lineHeight: 1.6,
+          lockMovementX: false,
+          lockMovementY: false,
+          lockRotation: false,
+          lockScalingX: false,
+          lockScalingY: false,
+          hasControls: true,
+          hasBorders: true,
+          cornerSize: 8,
+          cornerStyle: 'circle',
+          cornerColor: '#007bff',
+          borderColor: '#007bff',
+          borderScaleFactor: 2
+        })
 
-        // Arrow Icon (Bottom Right)
-        const arrowContainerSize = 50 * scaleFactor;
-        const arrowContainer = new fabric.Rect({
-          width: arrowContainerSize,
-          height: arrowContainerSize,
-          fill: slideData.accentColor || '#000000',
-          rx: 10 * scaleFactor,
-          ry: 10 * scaleFactor,
-          originX: 'center',
-          originY: 'center',
-        });
+        // Make title editable
+        makeTextEditable(title)
 
-        const arrow = new fabric.Text('→', {
-          fontSize: 30 * scaleFactor,
-          fill: slideData.background.color1,
-          originX: 'center',
-          originY: 'center',
-        });
+        // Add title to canvas
+        canvas.add(title)
 
-        const arrowGroup = new fabric.Group([arrowContainer, arrow], {
-          left: canvas.width - padding - (arrowContainerSize / 2),
-          top: canvas.height - padding - (arrowContainerSize / 2),
-          selectable: false,
-          evented: false,
-        });
+        // Add header picture if provided
+        if (headerPicture) {
+          fabric.Image.fromURL(headerPicture, (img) => {
+            // Scale image to fit nicely in the center of the header
+            const maxWidth = canvas.width * 0.4
+            const maxHeight = canvas.height * 0.3
+            const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1)
 
-        // Add elements without author image first
-        canvas.add(socialHandle, pageNumber, title, arrowGroup);
+            img.set({
+              left: canvas.width / 2,
+              top: canvas.height * 0.3, // Position above the title
+              scaleX: scale,
+              scaleY: scale,
+              originX: 'center',
+              originY: 'center',
+              selectable: true,
+              editable: true,
+              evented: true,
+              lockMovementX: false,
+              lockMovementY: false,
+              lockRotation: false,
+              lockScalingX: false,
+              lockScalingY: false
+            })
 
-        // Author Info (Bottom Left)
-        if (slideData.authorImageUrl && slideData.authorName) {
-            fabric.Image.fromURL(slideData.authorImageUrl, (img) => {
-                const authorImageSize = 50 * scaleFactor;
-
-                const circle = new fabric.Circle({
-                    radius: authorImageSize / 2,
-                    originX: 'center',
-                    originY: 'center',
-                });
-
-                img.scaleToWidth(authorImageSize);
-                img.set({
-                    clipPath: circle,
-                    originX: 'center',
-                    originY: 'center',
-                });
-
-                const authorNameText = new fabric.Text(slideData.authorName, {
-                    left: authorImageSize / 2 + 10 * scaleFactor,
-                    top: 0,
-                    fontFamily: getStyleProperty(slideData.subtitleStyle, 'fontFamily', 'Arial'),
-                    fontSize: 20 * scaleFactor,
-                    fill: textColor,
-                    fontWeight: 'bold',
-                    originX: 'left',
-                    originY: 'center',
-                });
-
-                const authorGroup = new fabric.Group([img, authorNameText], {
-                    left: padding + authorImageSize / 2,
-                    top: canvas.height - padding - authorImageSize / 2,
-                    selectable: false,
-                    evented: false,
-                });
-
-                canvas.add(authorGroup);
-                canvas.renderAll();
-
-            }, { crossOrigin: 'anonymous' });
+            canvas.add(img)
+            canvas.renderAll()
+          })
+        } else {
+          // If no header picture, just render the background and title
+          canvas.renderAll()
         }
       } else if (slideType === 'info') {
         // Create info slide content with proper formatting
@@ -850,9 +804,9 @@ const CanvasEditor = forwardRef(({
             }
             
             console.log('Processing paragraph:', paragraph)
-            const paragraphText = wrapText(highlightImportantWords(paragraph), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 28) * scaleFactor)
+            const paragraphText = wrapText(highlightImportantWords(paragraph), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor)
             const lines = paragraphText.split('\n')
-            const estimatedTextHeight = lines.length * getStyleProperty(slideData.paragraphStyle, 'fontSize', 28) * scaleFactor * 1.4 + 40
+            const estimatedTextHeight = lines.length * getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor * 1.4 + 40
 
             if (currentY + estimatedTextHeight > canvas.height - footerSpace) {
               console.log('Skipping paragraph due to space constraints')
@@ -861,8 +815,8 @@ const CanvasEditor = forwardRef(({
 
             const paragraphTextObj = createFormattedText(paragraphText, {
               left: canvas.width / 2,
-              top: currentY,
-              fontSize: getStyleProperty(slideData.paragraphStyle, 'fontSize', 28) * scaleFactor,
+              top: currentY * 2,
+              fontSize: getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor,
               fontFamily: getStyleProperty(slideData.paragraphStyle, 'fontFamily', 'Arial'),
               fill: getStyleProperty(slideData.paragraphStyle, 'color', '#333333'),
               fontWeight: getStyleProperty(slideData.paragraphStyle, 'fontWeight', 'normal'),
@@ -911,7 +865,7 @@ const CanvasEditor = forwardRef(({
 
             const impactfulTextObj = createFormattedText(impactfulText, {
               left: canvas.width / 2,
-              top: currentY,
+              top: currentY * 2,
               fontSize: getStyleProperty(slideData.paragraphStyle, 'fontSize', 32) * scaleFactor,
               fontFamily: getStyleProperty(slideData.paragraphStyle, 'fontFamily', 'Arial'),
               fill: getStyleProperty(slideData.paragraphStyle, 'color', '#333333'),
@@ -950,9 +904,9 @@ const CanvasEditor = forwardRef(({
           // Mixed content pattern - bullets + paragraph
           if (bulletPoints && Array.isArray(bulletPoints)) {
             bulletPoints.forEach((bulletPoint, index) => {
-              const bulletText = wrapText(highlightImportantWords(bulletPoint), maxTextWidth, getStyleProperty(slideData.bulletStyle, 'fontSize', 28) * scaleFactor)
+              const bulletText = wrapText(highlightImportantWords(bulletPoint), maxTextWidth, getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor)
               const lines = bulletText.split('\n')
-              const estimatedTextHeight = lines.length * getStyleProperty(slideData.bulletStyle, 'fontSize', 28) * scaleFactor * 1.1 + 35
+              const estimatedTextHeight = lines.length * getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor * 1.1 + 35
 
               if (currentY + estimatedTextHeight > canvas.height - footerSpace) {
                 return
@@ -961,7 +915,7 @@ const CanvasEditor = forwardRef(({
               const bulletSymbol = new fabric.Text('•', {
                 left: canvas.width * 0.1,
                 top: currentY,
-                fontSize: getStyleProperty(slideData.bulletStyle, 'fontSize', 28) * scaleFactor * 1.2,
+                fontSize: getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor * 1.2,
                 fontFamily: getStyleProperty(slideData.bulletStyle, 'fontFamily', 'Arial'),
                 fill: slideData.accentColor,
                 fontWeight: 'bold',
@@ -981,7 +935,7 @@ const CanvasEditor = forwardRef(({
               const bulletTextObj = createFormattedText(bulletText, {
                 left: canvas.width * 0.15,
                 top: currentY,
-                fontSize: getStyleProperty(slideData.bulletStyle, 'fontSize', 28) * scaleFactor,
+                fontSize: getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor,
                 fontFamily: getStyleProperty(slideData.bulletStyle, 'fontFamily', 'Arial'),
                 fill: getStyleProperty(slideData.bulletStyle, 'color', '#333333'),
                 fontWeight: getStyleProperty(slideData.bulletStyle, 'fontWeight', 'normal'),
@@ -1020,9 +974,9 @@ const CanvasEditor = forwardRef(({
           // Add paragraph after bullets in mixed content
           if (paragraphs && paragraphs.length > 0) {
             const paragraph = paragraphs[0]
-            const paragraphText = wrapText(highlightImportantWords(paragraph), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 24) * scaleFactor)
+            const paragraphText = wrapText(highlightImportantWords(paragraph), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor)
             const lines = paragraphText.split('\n')
-            const estimatedTextHeight = lines.length * getStyleProperty(slideData.paragraphStyle, 'fontSize', 24) * scaleFactor * 1.3 + 30
+            const estimatedTextHeight = lines.length * getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor * 1.3 + 30
 
             if (currentY + estimatedTextHeight > canvas.height - footerSpace) {
               return
@@ -1282,7 +1236,7 @@ const CanvasEditor = forwardRef(({
 
             img.set({
               left: canvas.width / 2,
-              top: canvas.height * 0.25,
+              top: canvas.height * 0.30,
               scaleX: scale,
               scaleY: scale,
               originX: 'center',
@@ -1552,12 +1506,12 @@ const CanvasEditor = forwardRef(({
           lockScalingY: false
         })
 
-        const wrappedCTA = wrapText(slideData.ctaText, maxTextWidth, getStyleProperty(slideData.ctaStyle, 'fontSize', 28) * scaleFactor)
+        const wrappedCTA = wrapText(slideData.ctaText, maxTextWidth, getStyleProperty(slideData.ctaStyle, 'fontSize', 30) * scaleFactor)
         const ctaText = createFormattedText(wrappedCTA, {
           left: canvas.width / 2,
           top: canvas.height * 0.7,
           fontFamily: getStyleProperty(slideData.ctaStyle, 'fontFamily', 'Arial'),
-          fontSize: getStyleProperty(slideData.ctaStyle, 'fontSize', 28) * scaleFactor,
+          fontSize: getStyleProperty(slideData.ctaStyle, 'fontSize', 30) * scaleFactor,
           fill: getStyleProperty(slideData.ctaStyle, 'color', '#007bff'),
           fontWeight: getStyleProperty(slideData.ctaStyle, 'fontWeight', 'bold'),
           textAlign: 'center',

@@ -226,112 +226,54 @@ export class CanvasGenerator {
     }
 
     if (slideType === 'header') {
-      const padding = 30 * scaleFactor;
-      const textColor = slideData.subtitleStyle.color || '#333333';
-
-      // Social Handle
-      const socialHandle = new fabric.Text(slideData.socialHandle || '@socialhandle', {
-          left: padding,
-          top: padding,
-          fontFamily: slideData.subtitleStyle.fontFamily || 'Arial',
-          fontSize: 18 * scaleFactor,
-          fill: textColor,
-          selectable: false,
-      });
-
-      // Page Number
-      const pageNumber = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
-          left: this.slideWidth - padding,
-          top: padding,
-          fontFamily: slideData.subtitleStyle.fontFamily || 'Arial',
-          fontSize: 18 * scaleFactor,
-          fill: textColor,
-          originX: 'right',
-          selectable: false,
-      });
-
-      // Title
-      const wrappedTitle = wrapText(slideData.title, this.slideWidth - (padding * 2), (slideData.titleStyle.fontSize || 80) * scaleFactor);
+      // Header slide - background, header picture, and title
+      // Create title text
+      const wrappedTitle = wrapText(slideData.title, maxTextWidth, slideData.titleStyle.fontSize * scaleFactor)
       const title = createFormattedText(wrappedTitle, {
-          left: padding,
-          top: this.slideHeight * 0.45,
-          originY: 'center',
-          fontFamily: slideData.titleStyle.fontFamily || 'Arial',
-          fontSize: (slideData.titleStyle.fontSize || 80) * scaleFactor,
-          fill: slideData.titleStyle.color || '#000000',
-          fontWeight: slideData.titleStyle.fontWeight || 'bold',
-          textAlign: 'left',
-          width: this.slideWidth - (padding * 2),
-          lineHeight: 1.2,
-      });
+        left: this.slideWidth / 2,
+        top: headerPicture ? this.slideHeight * 0.7 : this.slideHeight * 0.5, // Lower if header picture is present
+        fontFamily: slideData.titleStyle.fontFamily,
+        fontSize: slideData.titleStyle.fontSize * scaleFactor,
+        fill: slideData.titleStyle.color,
+        fontWeight: slideData.titleStyle.fontWeight,
+        textAlign: 'center',
+        originX: 'center',
+        originY: 'center',
+        width: maxTextWidth,
+        splitByGrapheme: true,
+        lineHeight: 1.6
+      })
 
-      // Arrow Icon
-      const arrowContainerSize = 50 * scaleFactor;
-      const arrowContainer = new fabric.Rect({
-          width: arrowContainerSize,
-          height: arrowContainerSize,
-          fill: slideData.accentColor || '#000000',
-          rx: 10 * scaleFactor,
-          ry: 10 * scaleFactor,
-          originX: 'center',
-          originY: 'center',
-      });
+      // Add title to canvas
+      canvas.add(title)
 
-      const arrow = new fabric.Text('→', {
-          fontSize: 30 * scaleFactor,
-          fill: slideData.background.color1,
-          originX: 'center',
-          originY: 'center',
-      });
-
-      const arrowGroup = new fabric.Group([arrowContainer, arrow], {
-          left: this.slideWidth - padding - (arrowContainerSize / 2),
-          top: this.slideHeight - padding - (arrowContainerSize / 2),
-          selectable: false,
-      });
-
-      canvas.add(socialHandle, pageNumber, title, arrowGroup);
-
-      // Author Info
-      if (slideData.authorImageUrl && slideData.authorName) {
+      // Add header picture if provided
+      if (headerPicture) {
         return new Promise((resolve) => {
-            fabric.Image.fromURL(slideData.authorImageUrl, (img) => {
-                const authorImageSize = 50 * scaleFactor;
+          fabric.Image.fromURL(headerPicture, (img) => {
+            // Scale image to fit nicely in the center of the header
+            const maxWidth = this.slideWidth * 0.4
+            const maxHeight = this.slideHeight * 0.3
+            const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1)
 
-                const circle = new fabric.Circle({
-                    radius: authorImageSize / 2,
-                    originX: 'center',
-                    originY: 'center',
-                });
+            img.set({
+              left: this.slideWidth / 2,
+              top: this.slideHeight * 0.3, // Position above the title
+              scaleX: scale,
+              scaleY: scale,
+              originX: 'center',
+              originY: 'center'
+            })
 
-                img.scaleToWidth(authorImageSize);
-                img.set({
-                    clipPath: circle,
-                    originX: 'center',
-                    originY: 'center',
-                });
-
-                const authorNameText = new fabric.Text(slideData.authorName, {
-                    left: authorImageSize / 2 + 10 * scaleFactor,
-                    top: 0,
-                    fontFamily: slideData.subtitleStyle.fontFamily || 'Arial',
-                    fontSize: 20 * scaleFactor,
-                    fill: textColor,
-                    fontWeight: 'bold',
-                    originX: 'left',
-                    originY: 'center',
-                });
-
-                const authorGroup = new fabric.Group([img, authorNameText], {
-                    left: padding + authorImageSize / 2,
-                    top: this.slideHeight - padding - authorImageSize / 2,
-                });
-
-                canvas.add(authorGroup);
-                canvas.renderAll();
-                resolve(canvas);
-            }, { crossOrigin: 'anonymous' });
-        });
+            canvas.add(img)
+            canvas.renderAll()
+            resolve(canvas)
+          })
+        })
+      } else {
+        // If no header picture, just render the background and title
+        canvas.renderAll()
+        return canvas
       }
     } else if (slideType === 'info') {
       // Create info slide content with bullet points
@@ -358,149 +300,200 @@ export class CanvasGenerator {
       const lineHeight = 1.2
       const objects = [title]
 
-      // Process bullet points (new format) or subheadings (old format)
-      if (slideData.bulletPoints && slideData.bulletPoints.length > 0) {
-        // New bullet point format
-        slideData.bulletPoints.forEach((bulletPoint, index) => {
-          // Calculate actual text height more accurately
-          const bulletText = wrapText(bulletPoint, maxTextWidth, slideData.bulletStyle.fontSize * scaleFactor)
-          const lines = bulletText.split('\n')
-          const estimatedTextHeight = lines.length * slideData.bulletStyle.fontSize * scaleFactor * 1.1 + 40
-          
-          // Check if we have enough space for this bullet point
-          if (currentY + estimatedTextHeight > this.slideHeight - footerSpace) {
-            return // Skip if not enough space
-          }
-          
-          // Create bullet point with bullet symbol
-          const bulletSymbol = new fabric.Text('•', {
-            left: this.slideWidth * 0.1,
-            top: currentY,
-            fontSize: slideData.bulletStyle.fontSize * scaleFactor * 1.2,
-            fontFamily: slideData.bulletStyle.fontFamily,
-            fill: slideData.accentColor,
-            fontWeight: 'bold',
-            textAlign: 'left',
-            originX: 'left',
-            originY: 'center'
-          })
-
-          // Create bullet point text
-          const bulletTextObj = createFormattedText(bulletText, {
-            left: this.slideWidth * 0.15,
-            top: currentY,
-            fontSize: slideData.bulletStyle.fontSize * scaleFactor,
-            fontFamily: slideData.bulletStyle.fontFamily,
-            fill: slideData.bulletStyle.color,
-            fontWeight: slideData.bulletStyle.fontWeight,
-            textAlign: 'left',
-            originX: 'left',
-            originY: 'center',
-            width: maxTextWidth * 0.8,
-            splitByGrapheme: true,
-            lineHeight: 1.1
-          })
-
-          objects.push(bulletSymbol, bulletTextObj)
-          currentY += estimatedTextHeight
-        })
-        
-        // Handle different slide patterns based on slidePattern
-        const slidePattern = slideData.slidePattern || 'bulletPoints'
-        
-        if (slidePattern === 'bulletPoints') {
-          // Traditional bullet points pattern - already handled above
-        } else if (slidePattern === 'singleParagraph') {
-          // Single impactful paragraph pattern
-          if (slideData.paragraphs && slideData.paragraphs.length > 0) {
-            const paragraph = slideData.paragraphs[0] // Use only the first paragraph
-            const paragraphText = wrapText(paragraph, maxTextWidth, slideData.paragraphStyle.fontSize * scaleFactor)
-            const lines = paragraphText.split('\n')
-            const estimatedTextHeight = lines.length * slideData.paragraphStyle.fontSize * scaleFactor * 1.4 + 40
+      // Handle different slide patterns based on slidePattern
+      const slidePattern = slideData.slidePattern || 'bulletPoints'
+      
+      if (slidePattern === 'bulletPoints') {
+        // Traditional bullet points pattern
+        if (slideData.bulletPoints && slideData.bulletPoints.length > 0) {
+          slideData.bulletPoints.forEach((bulletPoint, index) => {
+            // Calculate actual text height more accurately
+            const bulletText = wrapText(bulletPoint, maxTextWidth, slideData.bulletStyle.fontSize * scaleFactor)
+            const lines = bulletText.split('\n')
+            const estimatedTextHeight = lines.length * slideData.bulletStyle.fontSize * scaleFactor * 1.2 + 50
             
+            // Check if we have enough space for this bullet point
             if (currentY + estimatedTextHeight > this.slideHeight - footerSpace) {
-              return
+              return // Skip if not enough space
             }
             
-            const paragraphTextObj = createFormattedText(paragraphText, {
-              left: this.slideWidth / 2,
+            // Create bullet point with bullet symbol
+            const bulletSymbol = new fabric.Text('•', {
+              left: this.slideWidth * 0.1,
               top: currentY,
-              fontSize: slideData.paragraphStyle.fontSize * scaleFactor,
-              fontFamily: slideData.paragraphStyle.fontFamily,
-              fill: slideData.paragraphStyle.color,
-              fontWeight: slideData.paragraphStyle.fontWeight,
-              textAlign: 'center',
-              originX: 'center',
-              originY: 'center',
-              width: maxTextWidth,
-              splitByGrapheme: true,
-              lineHeight: 1.4
-            })
-
-            objects.push(paragraphTextObj)
-            currentY += estimatedTextHeight
-          }
-        } else if (slidePattern === 'impactfulLine') {
-          // Single impactful line pattern
-          if (slideData.impactfulLine) {
-            const impactfulText = wrapText(slideData.impactfulLine, maxTextWidth, slideData.paragraphStyle.fontSize * scaleFactor)
-            const lines = impactfulText.split('\n')
-            const estimatedTextHeight = lines.length * slideData.paragraphStyle.fontSize * scaleFactor * 1.3 + 50
-            
-            if (currentY + estimatedTextHeight > this.slideHeight - footerSpace) {
-              return
-            }
-            
-            const impactfulTextObj = createFormattedText(impactfulText, {
-              left: this.slideWidth / 2,
-              top: currentY,
-              fontSize: slideData.paragraphStyle.fontSize * scaleFactor,
-              fontFamily: slideData.paragraphStyle.fontFamily,
-              fill: slideData.paragraphStyle.color,
+              fontSize: slideData.bulletStyle.fontSize * scaleFactor * 1.2,
+              fontFamily: slideData.bulletStyle.fontFamily,
+              fill: slideData.accentColor,
               fontWeight: 'bold',
-              textAlign: 'center',
-              originX: 'center',
-              originY: 'center',
-              width: maxTextWidth,
-              splitByGrapheme: true,
-              lineHeight: 1.3
+              textAlign: 'left',
+              originX: 'left',
+              originY: 'center'
             })
 
-            objects.push(impactfulTextObj)
+            // Create bullet point text
+            const bulletTextObj = createFormattedText(bulletText, {
+              left: this.slideWidth * 0.15,
+              top: currentY,
+              fontSize: slideData.bulletStyle.fontSize * scaleFactor,
+              fontFamily: slideData.bulletStyle.fontFamily,
+              fill: slideData.bulletStyle.color,
+              fontWeight: slideData.bulletStyle.fontWeight,
+              textAlign: 'left',
+              originX: 'left',
+              originY: 'center',
+              width: maxTextWidth * 0.8,
+              splitByGrapheme: true,
+              lineHeight: 1.2
+            })
+
+            objects.push(bulletSymbol, bulletTextObj)
             currentY += estimatedTextHeight
+          })
+        }
+      } else if (slidePattern === 'singleParagraph') {
+        // Single impactful paragraph pattern
+        if (slideData.paragraphs && slideData.paragraphs.length > 0) {
+          const paragraph = slideData.paragraphs[0] // Use only the first paragraph
+          const paragraphText = wrapText(paragraph, maxTextWidth, slideData.paragraphStyle.fontSize * scaleFactor)
+          const lines = paragraphText.split('\n')
+          const estimatedTextHeight = lines.length * slideData.paragraphStyle.fontSize * scaleFactor * 1.3 + 50
+          
+          if (currentY + estimatedTextHeight > this.slideHeight - footerSpace) {
+            return
           }
-        } else if (slidePattern === 'mixedContent') {
-          // Mixed content pattern - bullets + paragraph
-          // Bullets are already handled above, now add paragraph
-          if (slideData.paragraphs && slideData.paragraphs.length > 0) {
-            const paragraph = slideData.paragraphs[0]
-            const paragraphText = wrapText(paragraph, maxTextWidth, slideData.paragraphStyle.fontSize * scaleFactor)
-            const lines = paragraphText.split('\n')
-            const estimatedTextHeight = lines.length * slideData.paragraphStyle.fontSize * scaleFactor * 1.3 + 30
+          
+          const paragraphTextObj = createFormattedText(paragraphText, {
+            left: this.slideWidth / 2,
+            top: currentY,
+            fontSize: slideData.paragraphStyle.fontSize * scaleFactor,
+            fontFamily: slideData.paragraphStyle.fontFamily,
+            fill: slideData.paragraphStyle.color,
+            fontWeight: slideData.paragraphStyle.fontWeight,
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            width: maxTextWidth,
+            splitByGrapheme: true,
+            lineHeight: 1.4
+          })
+
+          objects.push(paragraphTextObj)
+          currentY += estimatedTextHeight
+        }
+      } else if (slidePattern === 'impactfulLine') {
+        // Single impactful line pattern
+        if (slideData.impactfulLine) {
+          const impactfulText = wrapText(slideData.impactfulLine, maxTextWidth, slideData.paragraphStyle.fontSize * scaleFactor)
+          const lines = impactfulText.split('\n')
+          const estimatedTextHeight = lines.length * slideData.paragraphStyle.fontSize * scaleFactor * 1.3 + 50
+          
+          if (currentY + estimatedTextHeight > this.slideHeight - footerSpace) {
+            return
+          }
+          
+          const impactfulTextObj = createFormattedText(impactfulText, {
+            left: this.slideWidth / 2,
+            top: currentY,
+            fontSize: slideData.paragraphStyle.fontSize * scaleFactor,
+            fontFamily: slideData.paragraphStyle.fontFamily,
+            fill: slideData.paragraphStyle.color,
+            fontWeight: 'bold',
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            width: maxTextWidth,
+            splitByGrapheme: true,
+            lineHeight: 1.3
+          })
+
+          objects.push(impactfulTextObj)
+          currentY += estimatedTextHeight
+        }
+      } else if (slidePattern === 'mixedContent') {
+        // Mixed content pattern - bullets + paragraph
+        // First add bullet points if they exist
+        if (slideData.bulletPoints && slideData.bulletPoints.length > 0) {
+          slideData.bulletPoints.forEach((bulletPoint, index) => {
+            // Calculate actual text height more accurately
+            const bulletText = wrapText(bulletPoint, maxTextWidth, slideData.bulletStyle.fontSize * scaleFactor)
+            const lines = bulletText.split('\n')
+            const estimatedTextHeight = lines.length * slideData.bulletStyle.fontSize * scaleFactor * 1.2 + 50
             
+            // Check if we have enough space for this bullet point
             if (currentY + estimatedTextHeight > this.slideHeight - footerSpace) {
-              return
+              return // Skip if not enough space
             }
             
-            const paragraphTextObj = createFormattedText(paragraphText, {
-              left: this.slideWidth / 2,
+            // Create bullet point with bullet symbol
+            const bulletSymbol = new fabric.Text('•', {
+              left: this.slideWidth * 0.1,
               top: currentY,
-              fontSize: slideData.paragraphStyle.fontSize * scaleFactor,
-              fontFamily: slideData.paragraphStyle.fontFamily,
-              fill: slideData.paragraphStyle.color,
-              fontWeight: slideData.paragraphStyle.fontWeight,
-              textAlign: 'center',
-              originX: 'center',
-              originY: 'center',
-              width: maxTextWidth,
-              splitByGrapheme: true,
-              lineHeight: 1.3
+              fontSize: slideData.bulletStyle.fontSize * scaleFactor * 1.2,
+              fontFamily: slideData.bulletStyle.fontFamily,
+              fill: slideData.accentColor,
+              fontWeight: 'bold',
+              textAlign: 'left',
+              originX: 'left',
+              originY: 'center'
             })
 
-            objects.push(paragraphTextObj)
+            // Create bullet point text
+            const bulletTextObj = createFormattedText(bulletText, {
+              left: this.slideWidth * 0.15,
+              top: currentY,
+              fontSize: slideData.bulletStyle.fontSize * scaleFactor,
+              fontFamily: slideData.bulletStyle.fontFamily,
+              fill: slideData.bulletStyle.color,
+              fontWeight: slideData.bulletStyle.fontWeight,
+              textAlign: 'left',
+              originX: 'left',
+              originY: 'center',
+              width: maxTextWidth * 0.8,
+              splitByGrapheme: true,
+              lineHeight: 1.2
+            })
+
+            objects.push(bulletSymbol, bulletTextObj)
             currentY += estimatedTextHeight
-          }
+          })
         }
+        
+        // Then add paragraph if it exists
+        if (slideData.paragraphs && slideData.paragraphs.length > 0) {
+          // Add some spacing between bullets and paragraph
+          currentY += 30 * scaleFactor
+          
+          const paragraph = slideData.paragraphs[0]
+          const paragraphText = wrapText(paragraph, maxTextWidth, slideData.paragraphStyle.fontSize * scaleFactor)
+          const lines = paragraphText.split('\n')
+          const estimatedTextHeight = lines.length * slideData.paragraphStyle.fontSize * scaleFactor * 1.3 + 30
+          
+          if (currentY + estimatedTextHeight > this.slideHeight - footerSpace) {
+            return
+          }
+          
+          const paragraphTextObj = createFormattedText(paragraphText, {
+            left: this.slideWidth / 2,
+            top: currentY,
+            fontSize: slideData.paragraphStyle.fontSize * scaleFactor,
+            fontFamily: slideData.paragraphStyle.fontFamily,
+            fill: slideData.paragraphStyle.color,
+            fontWeight: slideData.paragraphStyle.fontWeight,
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            width: maxTextWidth,
+            splitByGrapheme: true,
+            lineHeight: 1.3
+          })
+
+          objects.push(paragraphTextObj)
+          currentY += estimatedTextHeight
+        }
+      }
+      
+      // Process old subheading format if no bullet points exist
+      if (!slideData.bulletPoints || slideData.bulletPoints.length === 0) {
       } else if (slideData.subheadings && slideData.subheadings.length > 0) {
         // Old subheading format - convert to bullet points
         slideData.subheadings.forEach((subheading, index) => {
@@ -582,7 +575,7 @@ export class CanvasGenerator {
                 originY: 'center',
                 width: maxTextWidth * 0.75,
                 splitByGrapheme: true,
-                lineHeight: 1.1
+                lineHeight: 1.2
               })
 
               objects.push(subBulletSymbol, keyPointTextObj)
@@ -708,7 +701,7 @@ export class CanvasGenerator {
               originY: 'center',
               width: maxTextWidth,
               splitByGrapheme: true,
-              lineHeight: 1.4
+              lineHeight: 1.3
             })
 
             // Add subtitle below the title
@@ -725,7 +718,7 @@ export class CanvasGenerator {
               originY: 'center',
               width: maxTextWidth,
               splitByGrapheme: true,
-              lineHeight: 1.4
+              lineHeight: 1.3
             })
 
             const accentRect = new fabric.Rect({
