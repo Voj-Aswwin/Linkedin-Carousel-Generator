@@ -572,177 +572,123 @@ const CanvasEditor = forwardRef(({
           return
         }
 
-        // Create header slide content with proper formatting
-        const wrappedTitle = wrapText(slideData.title, maxTextWidth, getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor)
+        const padding = 30 * scaleFactor;
+        const textColor = getStyleProperty(slideData.subtitleStyle, 'color', '#333333');
+
+        // Social Handle (Top Left)
+        const socialHandle = new fabric.Text(slideData.socialHandle || '@socialhandle', {
+          left: padding,
+          top: padding,
+          fontFamily: getStyleProperty(slideData.subtitleStyle, 'fontFamily', 'Arial'),
+          fontSize: 18 * scaleFactor,
+          fill: textColor,
+          selectable: false,
+          evented: false,
+        });
+
+        // Page Number (Top Right)
+        const pageNumber = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
+          left: canvas.width - padding,
+          top: padding,
+          fontFamily: getStyleProperty(slideData.subtitleStyle, 'fontFamily', 'Arial'),
+          fontSize: 18 * scaleFactor,
+          fill: textColor,
+          originX: 'right',
+          selectable: false,
+          evented: false,
+        });
+
+        // Title
+        const wrappedTitle = wrapText(slideData.title, canvas.width - (padding * 2), getStyleProperty(slideData.titleStyle, 'fontSize', 80) * scaleFactor);
         const title = createFormattedText(wrappedTitle, {
-          left: canvas.width / 2,
-          top: headerPicture ? canvas.height * 0.5 : canvas.height * 0.3,
+          left: padding,
+          top: canvas.height * 0.45,
+          originY: 'center',
+          originX: 'left',
           fontFamily: getStyleProperty(slideData.titleStyle, 'fontFamily', 'Arial'),
-          fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor,
+          fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 80) * scaleFactor,
           fill: getStyleProperty(slideData.titleStyle, 'color', '#000000'),
           fontWeight: getStyleProperty(slideData.titleStyle, 'fontWeight', 'bold'),
-          textAlign: 'center',
-          originX: 'center',
-          originY: 'center',
-          width: maxTextWidth,
+          textAlign: 'left',
+          width: canvas.width - (padding * 2),
           splitByGrapheme: true,
           selectable: true,
           editable: true,
           evented: true,
-          lineHeight: 1.6,
-          lockMovementX: false,
-          lockMovementY: false,
-          lockRotation: false,
-          lockScalingX: false,
-          lockScalingY: false,
-          hasControls: true,
-          hasBorders: true,
-          cornerSize: 8,
-          cornerStyle: 'circle',
-          cornerColor: '#007bff',
-          borderColor: '#007bff',
-          borderScaleFactor: 2
-        })
+          lineHeight: 1.2,
+        });
+        makeTextEditable(title);
 
-        // Add highlight background for title (positioned after text is created)
-        const titleHighlight = createTextHighlight(title, slideData.accentColor, 0.3)
-        titleHighlight.highlightFor = title // Store reference to the text object
-
-        // Position highlight correctly relative to text
-        titleHighlight.set({
-          left: title.left,
-          top: title.top
-        })
-
-        // Add subtitle with text wrapping and formatting
-        const wrappedSubtitle = wrapText(slideData.subtitle, maxTextWidth, getStyleProperty(slideData.subtitleStyle, 'fontSize', 24) * scaleFactor)
-        const subtitle = createFormattedText(wrappedSubtitle, {
-          left: canvas.width / 2,
-          top: headerPicture ? canvas.height * 0.75 : canvas.height * 0.6, // Lower if header picture is present
-          fontFamily: getStyleProperty(slideData.subtitleStyle, 'fontFamily', 'Arial'),
-          fontSize: getStyleProperty(slideData.subtitleStyle, 'fontSize', 24) * scaleFactor,
-          fill: getStyleProperty(slideData.subtitleStyle, 'color', '#333333'),
-          fontWeight: getStyleProperty(slideData.subtitleStyle, 'fontWeight', 'normal'),
-          textAlign: 'center',
+        // Arrow Icon (Bottom Right)
+        const arrowContainerSize = 50 * scaleFactor;
+        const arrowContainer = new fabric.Rect({
+          width: arrowContainerSize,
+          height: arrowContainerSize,
+          fill: slideData.accentColor || '#000000',
+          rx: 10 * scaleFactor,
+          ry: 10 * scaleFactor,
           originX: 'center',
           originY: 'center',
-          width: maxTextWidth,
-          splitByGrapheme: true,
-          selectable: true,
-          editable: true,
-          evented: true,
-          lineHeight: 1.6,
-          lockMovementX: false,
-          lockMovementY: false,
-          lockRotation: false,
-          lockScalingX: false,
-          lockScalingY: false,
-          hasControls: true,
-          hasBorders: true,
-          cornerSize: 8,
-          cornerStyle: 'circle',
-          cornerColor: '#007bff',
-          borderColor: '#007bff',
-          borderScaleFactor: 2
-        })
+        });
 
-        // Add decorative elements - position between title and subtitle
-        const accentRect = new fabric.Rect({
-          left: canvas.width / 2,
-          top: headerPicture ? canvas.height * 0.7 : canvas.height * 0.5, // Lower if header picture is present
-          width: 200 * scaleFactor,
-          height: 4 * scaleFactor,
-          fill: slideData.accentColor,
-          originX: 'center',
-          originY: 'center'
-        })
-
-        // Make all text objects editable (no longer grouped)
-        makeTextEditable(title)
-        makeTextEditable(subtitle)
-
-        // Add progress bar to header slide as well
-        const footerSpace = 120 * scaleFactor
-        const progressBarWidth = canvas.width * 0.5
-        const progressBarHeight = 15 * scaleFactor
-        const progressBarY = canvas.height - (footerSpace / 2)
-        const progress = ((currentSlideIndex + 1) / totalSlides) * 100
-
-        // Progress bar background
-        const progressBarBg = new fabric.Rect({
-          left: canvas.width / 2,
-          top: progressBarY,
-          width: progressBarWidth,
-          height: progressBarHeight,
-          fill: 'rgba(0,0,0,0.1)',
+        const arrow = new fabric.Text('→', {
+          fontSize: 30 * scaleFactor,
+          fill: slideData.background.color1,
           originX: 'center',
           originY: 'center',
+        });
+
+        const arrowGroup = new fabric.Group([arrowContainer, arrow], {
+          left: canvas.width - padding - (arrowContainerSize / 2),
+          top: canvas.height - padding - (arrowContainerSize / 2),
           selectable: false,
           evented: false,
-          rx: progressBarHeight / 2,
-          ry: progressBarHeight / 2
-        })
+        });
 
-        // Progress bar fill
-        const progressBarFill = new fabric.Rect({
-          left: canvas.width / 2 - progressBarWidth / 2,
-          top: progressBarY,
-          width: (progressBarWidth * progress) / 100,
-          height: progressBarHeight,
-          fill: slideData.accentColor,
-          originX: 'left',
-          originY: 'center',
-          selectable: false,
-          evented: false,
-          rx: progressBarHeight / 2,
-          ry: progressBarHeight / 2
-        })
+        // Add elements without author image first
+        canvas.add(socialHandle, pageNumber, title, arrowGroup);
 
-        // Progress text
-        const progressText = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
-          left: canvas.width / 2,
-          top: progressBarY + 20 * scaleFactor,
-          fontSize: 14 * scaleFactor,
-          fill: slideData.accentColor,
-          fontFamily: 'Arial',
-          textAlign: 'center',
-          originX: 'center',
-          originY: 'center',
-          selectable: false,
-          evented: false
-        })
+        // Author Info (Bottom Left)
+        if (slideData.authorImageUrl && slideData.authorName) {
+            fabric.Image.fromURL(slideData.authorImageUrl, (img) => {
+                const authorImageSize = 50 * scaleFactor;
 
-        // Add header picture if provided
-        if (headerPicture && slideType === 'header') {
-          fabric.Image.fromURL(headerPicture, (img) => {
-            // Scale image to fit nicely in the center of the header
-            const maxWidth = canvas.width * 0.4
-            const maxHeight = canvas.height * 0.3
-            const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1)
+                const circle = new fabric.Circle({
+                    radius: authorImageSize / 2,
+                    originX: 'center',
+                    originY: 'center',
+                });
 
-            img.set({
-              left: canvas.width / 2,
-              top: canvas.height * 0.15, // Position above the title
-              scaleX: scale,
-              scaleY: scale,
-              originX: 'center',
-              originY: 'center',
-              selectable: true,
-              editable: true,
-              evented: true,
-              lockMovementX: false,
-              lockMovementY: false,
-              lockRotation: false,
-              lockScalingX: false,
-              lockScalingY: false
-            })
+                img.scaleToWidth(authorImageSize);
+                img.set({
+                    clipPath: circle,
+                    originX: 'center',
+                    originY: 'center',
+                });
 
-            canvas.add(img)
-            canvas.renderAll()
-          })
+                const authorNameText = new fabric.Text(slideData.authorName, {
+                    left: authorImageSize / 2 + 10 * scaleFactor,
+                    top: 0,
+                    fontFamily: getStyleProperty(slideData.subtitleStyle, 'fontFamily', 'Arial'),
+                    fontSize: 20 * scaleFactor,
+                    fill: textColor,
+                    fontWeight: 'bold',
+                    originX: 'left',
+                    originY: 'center',
+                });
+
+                const authorGroup = new fabric.Group([img, authorNameText], {
+                    left: padding + authorImageSize / 2,
+                    top: canvas.height - padding - authorImageSize / 2,
+                    selectable: false,
+                    evented: false,
+                });
+
+                canvas.add(authorGroup);
+                canvas.renderAll();
+
+            }, { crossOrigin: 'anonymous' });
         }
-
-        canvas.add(titleHighlight, title, subtitle, accentRect, progressBarBg, progressBarFill, progressText)
       } else if (slideType === 'info') {
         // Create info slide content with proper formatting
         console.log('Rendering info slide with data:', slideData)

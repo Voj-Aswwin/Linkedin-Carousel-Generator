@@ -55,6 +55,10 @@ export const generateHeaderSlide = async (userContent) => {
     {
       "title": "Compelling headline (max 8 words, action-oriented)",
       "subtitle": "Supporting text that adds context (max 15 words)",
+      "socialHandle": "@social_handle",
+      "authorName": "Author Name",
+      "authorHandle": "@author_handle",
+      "authorImageUrl": "https://example.com/author.jpg",
       "background": {
         "type": "gradient" | "solid" | "pattern",
         "color1": "#hexcolor (primary color)",
