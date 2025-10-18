@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react'
 import { Sparkles, FileText, Wand2, Download, Copy, GripVertical } from 'lucide-react'
 import TextInput from './components/TextInput'
 import GenerateButton from './components/GenerateButton'
+import GenerateMockButton from './components/GenerateMockButton'
 import CanvasEditor from './components/CanvasEditor'
 import ToolPanel from './components/ToolPanel'
 import PropertiesPanel from './components/PropertiesPanel'
@@ -30,7 +31,7 @@ function App() {
       color: "#333333",
       fontWeight: "normal"
     },
-    accentColor: "#007bff"
+    accentColor: "#F4B400"
   }
 
   const [textInput, setTextInput] = useState('')
@@ -50,6 +51,17 @@ function App() {
   const [dragOverIndex, setDragOverIndex] = useState(null)
   const [slideStates, setSlideStates] = useState({}) // Store slide states for persistence
   const canvasEditorRef = useRef(null)
+
+  // Save the current slide state immediately (used before navigation/export)
+  const saveCurrentSlideStateNow = () => {
+    const state = canvasEditorRef.current?.getCurrentSlideState?.()
+    if (state) {
+      setSlideStates(prev => ({
+        ...prev,
+        [currentSlideIndex]: state
+      }))
+    }
+  }
 
   const handleGenerate = async () => {
     if (!textInput.trim()) return
@@ -122,6 +134,141 @@ function App() {
     } finally {
       setIsGenerating(false)
     }
+  }
+
+  const handleGenerateMock = () => {
+    const mockCarousel = {
+      headerSlide: {
+        title: "This is a Mock Carousel",
+        subtitle: "Generated for testing purposes",
+        background: {
+          type: "solid",
+          color1: "#FDFBF4",
+          color2: "#FDFBF4"
+        },
+        titleStyle: {
+          fontSize: 120,
+          fontFamily: "Poppins",
+          color: "#000000",
+          fontWeight: "bold"
+        },
+        subtitleStyle: {
+          fontSize: 40,
+          fontFamily: "Poppins",
+          color: "#000000",
+          fontWeight: "normal"
+        },
+        accentColor: "#000000"
+      },
+      imageSlides: [
+        {
+          slideNumber: 1,
+          generatedImage: "https://picsum.photos/1280/960",
+          title: "A Themed Image Slide",
+          subtitle: "Visual break that still matches the story",
+          background: {
+            type: "solid",
+            color1: "#0F0F10",
+            color2: "#0F0F10"
+          },
+          titleStyle: { fontSize: 60, fontFamily: "Inter", color: "#fff4e2", fontWeight: "bold" },
+          subtitleStyle: { fontSize: 28, fontFamily: "Inter", color: "#fff4e2", fontWeight: "normal" },
+          accentColor: "#F4B400"
+        }
+      ],
+      infoSlides: [
+        {
+          // 1) Bullet points pattern
+          slideNumber: 1,
+          title: "Mock Info Slide",
+          slidePattern: "bulletPoints",
+          bulletPoints: [
+            "Define your core strengths",
+            "Clarify your values",
+            "Pick a clear audience"
+          ],
+          titleStyle: { fontSize: 80, fontFamily: "Inter", color: "#fff4e2", fontWeight: "bold" },
+          bulletStyle: { fontSize: 30, fontFamily: "Inter", color: "#fff4e2", fontWeight: "normal" },
+          paragraphStyle: { fontSize: 30, fontFamily: "Inter", color: "#fff4e2", fontWeight: "normal" },
+          subheadingStyle: { fontSize: 32, fontFamily: "Inter", color: "#fff4e2", fontWeight: "bold" },
+          textStyle: { fontSize: 20, fontFamily: "Inter", color: "#fff4e2", fontWeight: "normal" },
+          accentColor: "#F4B400"
+        },
+        {
+          // 2) Single paragraph pattern
+          slideNumber: 2,
+          title: "Why this matters",
+          slidePattern: "singleParagraph",
+          paragraphs: [
+            "A clear personal brand helps people understand who you help and why they should trust you."
+          ],
+          titleStyle: { fontSize: 80, fontFamily: "Inter", color: "#fff4e2", fontWeight: "bold" },
+          paragraphStyle: { fontSize: 30, fontFamily: "Inter", color: "#fff4e2", fontWeight: "normal" },
+          accentColor: "#F4B400"
+        },
+        {
+          // 3) Impactful line pattern
+          slideNumber: 3,
+          title: "Impact",
+          slidePattern: "impactfulLine",
+          impactfulLine: "Consistency beats intensity. Show up with value every day.",
+          titleStyle: { fontSize: 80, fontFamily: "Inter", color: "#fff4e2", fontWeight: "bold" },
+          paragraphStyle: { fontSize: 32, fontFamily: "Inter", color: "#fff4e2", fontWeight: "bold" },
+          accentColor: "#F4B400"
+        },
+        {
+          // 4) Mixed content pattern
+          slideNumber: 4,
+          title: "Action plan",
+          slidePattern: "mixedContent",
+          bulletPoints: [
+            "Audit your profile",
+            "Clarify your niche",
+            "Share 3 posts/week"
+          ],
+          paragraphs: [
+            "Small, consistent steps create momentum. Start simple and iterate with feedback."
+          ],
+          titleStyle: { fontSize: 80, fontFamily: "Inter", color: "#fff4e2", fontWeight: "bold" },
+          bulletStyle: { fontSize: 30, fontFamily: "Inter", color: "#fff4e2", fontWeight: "normal" },
+          paragraphStyle: { fontSize: 24, fontFamily: "Inter", color: "#fff4e2", fontWeight: "normal" },
+          accentColor: "#F4B400"
+        }
+      ],
+      endSlide: {
+        title: "Want more tips?",
+        subtitle: "Follow us and share this post with others who might find it helpful!",
+        ctaText: "@reallygreatsite.com",
+        background: {
+          type: "solid",
+          color1: "#FDFBF4",
+          color2: "#FDFBF4"
+        },
+        titleStyle: {
+          fontSize: 80,
+          fontFamily: "Poppins",
+          color: "#000000",
+          fontWeight: "bold",
+          backgroundColor: "#000000",
+          highlightColor: "#FFA500"
+        },
+        subtitleStyle: {
+          fontSize: 60,
+          fontFamily: "Poppins",
+          color: "#000000",
+          fontWeight: "normal"
+        },
+        ctaStyle: {
+          fontSize: 24,
+          fontFamily: "Poppins",
+          color: "#000000",
+          fontWeight: "normal"
+        },
+        accentColor: "#000000"
+      }
+    };
+    setCarouselData(mockCarousel);
+    setCurrentSlideIndex(0);
   }
 
   const getCurrentSlide = () => {
@@ -550,9 +697,10 @@ function App() {
   // Handle slide updates and save state
   const handleSlideUpdate = (data) => {
     if (data.slideState) {
+      const indexToSave = Number.isInteger(data.slideIndex) ? data.slideIndex : currentSlideIndex
       setSlideStates(prev => ({
         ...prev,
-        [currentSlideIndex]: data.slideState
+        [indexToSave]: data.slideState
       }))
     }
   }
@@ -562,6 +710,9 @@ function App() {
     
     setIsExportingPDF(true)
     try {
+      // Ensure current slide changes are saved
+      saveCurrentSlideStateNow()
+
       // Reset the PDF service
       pdfExportService.reset()
       
@@ -571,8 +722,8 @@ function App() {
       
       console.log('Starting PDF generation...')
       
-      // Export entire carousel as PDF
-      await pdfExportService.generateCarouselPDF(carouselData, headerPicture)
+      // Export entire carousel as PDF using saved states
+      await pdfExportService.generateCarouselPDF(carouselData, headerPicture, { savedStates: slideStates })
       pdfExportService.downloadPDF(filename)
       
       console.log('PDF exported successfully!')
@@ -652,11 +803,14 @@ function App() {
                 <span className="text-sm text-gray-500">
                   {textInput.length} characters
                 </span>
-                <GenerateButton 
-                  onClick={handleGenerate}
-                  isLoading={isGenerating}
-                  disabled={!textInput.trim()}
-                />
+                <div className="flex space-x-2">
+                  <GenerateMockButton onClick={handleGenerateMock} />
+                  <GenerateButton 
+                    onClick={handleGenerate}
+                    isLoading={isGenerating}
+                    disabled={!textInput.trim()}
+                  />
+                </div>
               </div>
 
               {/* Color Palette */}
@@ -737,7 +891,7 @@ function App() {
                 {carouselData && (
                   <div className="flex items-center space-x-2">
                     <button
-                      onClick={() => setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1))}
+                      onClick={() => { saveCurrentSlideStateNow(); setCurrentSlideIndex(Math.max(0, currentSlideIndex - 1)) }}
                       disabled={currentSlideIndex === 0}
                       className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -758,7 +912,7 @@ function App() {
                       <span>Download</span>
                     </button>
                     <button
-                      onClick={() => setCurrentSlideIndex(Math.min(getTotalSlides() - 1, currentSlideIndex + 1))}
+                      onClick={() => { saveCurrentSlideStateNow(); setCurrentSlideIndex(Math.min(getTotalSlides() - 1, currentSlideIndex + 1)) }}
                       disabled={currentSlideIndex === getTotalSlides() - 1}
                       className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -914,7 +1068,7 @@ function App() {
                       onDrop={(e) => handleDrop(e, index)}
                     >
                       <button
-                        onClick={() => setCurrentSlideIndex(index)}
+                        onClick={() => { saveCurrentSlideStateNow(); setCurrentSlideIndex(index) }}
                         className={`w-24 h-16 rounded-lg border-2 overflow-hidden transition-all ${
                           isCurrent 
                             ? 'border-blue-500 shadow-lg' 

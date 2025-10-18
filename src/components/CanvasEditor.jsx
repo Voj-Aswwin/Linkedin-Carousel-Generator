@@ -115,7 +115,7 @@ const CanvasEditor = forwardRef(({
 
       // Save state before moving starts (if not already saved)
       if (!obj._movingStarted) {
-        const state = JSON.stringify(canvas.toJSON())
+        const state = JSON.stringify(canvas.toJSON(['highlightColor']))
         setUndoHistory(prev => {
           const newHistory = [...prev, state]
           return newHistory.slice(-10)
@@ -145,7 +145,7 @@ const CanvasEditor = forwardRef(({
 
       // Save state before scaling starts (if not already saved)
       if (!obj._scalingStarted) {
-        const state = JSON.stringify(canvas.toJSON())
+        const state = JSON.stringify(canvas.toJSON(['highlightColor']))
         setUndoHistory(prev => {
           const newHistory = [...prev, state]
           return newHistory.slice(-10)
@@ -175,7 +175,7 @@ const CanvasEditor = forwardRef(({
 
       // Save state before rotating starts (if not already saved)
       if (!obj._rotatingStarted) {
-        const state = JSON.stringify(canvas.toJSON())
+        const state = JSON.stringify(canvas.toJSON(['highlightColor']))
         setUndoHistory(prev => {
           const newHistory = [...prev, state]
           return newHistory.slice(-10)
@@ -421,6 +421,10 @@ const CanvasEditor = forwardRef(({
       setIsInitialLoad(true)
       setIsLoading(true)
       const canvas = fabricCanvasRef.current
+      const loadSlideData = (slideData) => {
+        // This is a temporary fix to avoid a ReferenceError.
+        // The actual slide rendering logic is handled below.
+      };
       
       // Check if we have a saved state for this slide first, but only if we're switching slides
       const savedState = savedStates[currentSlideIndex]
@@ -433,9 +437,19 @@ const CanvasEditor = forwardRef(({
         canvas.loadFromJSON(savedState.objects, () => {
           canvas.renderAll()
           setIsInitialLoad(false)
+
+          // After loading, re-apply any necessary text updates
+          canvas.getObjects().forEach(obj => {
+            if (obj.type === 'text' || obj.type === 'textbox') {
+              updateTextHighlight(obj)
+            }
+          })
         })
         previousSlideIndexRef.current = currentSlideIndex
         return // Exit early, don't re-render from AI data
+      } else {
+        // If no saved state, load from slideData
+        loadSlideData(slideData)
       }
       
       // Update the previous slide index reference
@@ -443,8 +457,10 @@ const CanvasEditor = forwardRef(({
       
       canvas.clear()
 
-      // Set background
-      if (slideData.background.type === 'gradient') {
+      // Set background with safe defaults when background is missing
+      if (!slideData.background) {
+        canvas.setBackgroundColor('#ffffff', canvas.renderAll.bind(canvas))
+      } else if (slideData.background.type === 'gradient') {
         const gradient = new fabric.Gradient({
           type: 'linear',
           coords: { x1: 0, y1: 0, x2: 0, y2: canvas.height },
@@ -478,8 +494,8 @@ const CanvasEditor = forwardRef(({
           console.warn(`Word count (${wordCount}) is outside optimal range (15-40 words)`)
         }
 
-        // More conservative character width estimation
-        const avgCharWidth = fontSize * 0.5 // Even more conservative
+        // More conservative character width estimation to prevent overflow
+        const avgCharWidth = fontSize * 0.6
         const maxCharsPerLine = Math.floor(maxWidth / avgCharWidth)
 
         // Ensure reasonable line length for readability
@@ -513,6 +529,14 @@ const CanvasEditor = forwardRef(({
         return lines.join('\n')
       }
 
+      const cleanTitleFormatting = (text) => {
+        if (!text) return text
+        // Remove italic markers and collapse double spaces to avoid kerning gaps
+        return text
+          .replace(/(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)/g, '$1')
+          .replace(/\s{2,}/g, ' ')
+      }
+
       const highlightImportantWords = (text) => {
         if (!text) return text
 
@@ -541,6 +565,24 @@ const CanvasEditor = forwardRef(({
         return highlightedText
       }
 
+      // Helper function to limit words in bullet points (5-6 words)
+      const limitBulletPointWords = (text, maxWords = 6) => {
+        if (!text) return text
+        const words = text.trim().split(/\s+/)
+        if (words.length <= maxWords) return text
+        // Truncate without adding ellipsis to avoid trailing ... in bullets
+        return words.slice(0, maxWords).join(' ')
+      }
+
+      // Helper function to limit words in paragraphs (15-20 words)
+      const limitParagraphWords = (text, maxWords = 20) => {
+        if (!text) return text
+        const words = text.trim().split(/\s+/)
+        if (words.length <= maxWords) return text
+        // Truncate without ellipsis to prevent "..." endings everywhere
+        return words.slice(0, maxWords).join(' ')
+      }
+
       // Helper function to make text editable - defined once for all slide types
       const makeTextEditable = (textObj) => {
         textObj.set({
@@ -563,88 +605,151 @@ const CanvasEditor = forwardRef(({
       }
 
       if (slideType === 'header') {
-        // Header slide - background, header picture, and title
-        // Check if this is a blank slide (no content)
-        if (!slideData.title || slideData.title.trim() === '') {
-          // For blank slides, just set background and return
-          canvas.renderAll()
-          setIsLoading(false)
-          setIsInitialLoad(false)
-          return
+        // Set background color and add grid
+        canvas.setBackgroundColor('#FBEFDB', canvas.renderAll.bind(canvas));
+        const gridSpacing = 40 * scaleFactor;
+        const gridLines = [];
+        for (let i = 1; i < canvas.width / gridSpacing; i++) {
+          gridLines.push(new fabric.Line([i * gridSpacing, 0, i * gridSpacing, canvas.height], { stroke: 'rgba(0,0,0,0.05)', strokeWidth: 1.5, selectable: false, evented: false }));
         }
+        for (let i = 1; i < canvas.height / gridSpacing; i++) {
+          gridLines.push(new fabric.Line([0, i * gridSpacing, canvas.width, i * gridSpacing], { stroke: 'rgba(0,0,0,0.05)', strokeWidth: 1.5, selectable: false, evented: false }));
+        }
+        canvas.add(new fabric.Group(gridLines, { selectable: false, evented: false }));
+  
+        // Add "Liceria.Co"
+        canvas.add(new fabric.Textbox('Liceria.Co', {
+          left: 80 * scaleFactor,
+          top: 80 * scaleFactor,
+          fontFamily: 'Inter',
+          fontSize: 32 * scaleFactor,
+          fill: '#000000',
+          fontWeight: 'bold',
+          selectable: false,
+        }));
+  
+        // Add decorative dot pattern
+        const dotPattern = [];
+        const dotColor = 'rgba(244, 180, 0, 0.5)';
+        for (let i = 0; i < 8; i++) {
+          for (let j = 0; j < 15; j++) {
+            if (j > i && j < 15 - i) {
+              dotPattern.push(new fabric.Circle({
+                left: canvas.width - (280 * scaleFactor) + (j * 12 * scaleFactor),
+                top: 80 * scaleFactor + (i * 12 * scaleFactor),
+                radius: 3 * scaleFactor,
+                fill: dotColor,
+                selectable: false,
+                evented: false
+              }));
+            }
+          }
+        }
+        canvas.add(new fabric.Group(dotPattern, { selectable: false, evented: false }));
+  
+        // Add quotation mark
+        canvas.add(new fabric.Textbox('"', {
+          left: 70 * scaleFactor,
+          top: 180 * scaleFactor,
+          fontFamily: 'Georgia',
+          fontSize: 180 * scaleFactor,
+          fill: '#000000',
+          opacity: 0.8,
+          selectable: false,
+        }));
+  
+        // Add main title
+        const titleLines = slideData.title.split('\\n');
+        let currentTop = 300 * scaleFactor;
+        const titleFontSize = 110 * scaleFactor;
+        const lineSpacing = 120 * scaleFactor;
+  
+        titleLines.forEach(line => {
+          // Strip any asterisks from header lines and render as plain text
+          const cleanLine = String(line).replace(/\*/g, '').trim();
+          
+          const text = new fabric.Textbox(cleanLine, {
+            left: 80 * scaleFactor,
+            top: currentTop,
+            fontFamily: 'Inter',
+            fontSize: titleFontSize,
+            fill: '#000000',
+            fontWeight: 900,
+            selectable: true,
+            editable: true,
+            lineHeight: 1,
+          });
+          
+          canvas.add(text);
+          currentTop += lineSpacing;
+        });
+  
+        // Sleek progress bar with percentage (bottom center)
+        {
+          const progressBarWidth = canvas.width * 0.5
+          const progressBarHeight = 15 * scaleFactor
+          const progressBarY = canvas.height - (60 * scaleFactor)
+          const progress = ((currentSlideIndex + 1) / totalSlides) * 100
+          const accent = slideData.accentColor || '#F4B400'
+          const titleColor = (getStyleProperty?.(slideData.titleStyle, 'color', '#000000') || '#000000').toString().toLowerCase()
+          const isWhiteText = titleColor === '#ffffff' || titleColor === 'white' || titleColor === 'rgb(255,255,255)'
 
-        // Create title text
-        const wrappedTitle = wrapText(slideData.title, maxTextWidth, getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor)
-        const title = createFormattedText(wrappedTitle, {
-          left: canvas.width / 2,
-          top: headerPicture ? canvas.height * 0.7 : canvas.height * 0.5, // Lower if header picture is present
-          fontFamily: getStyleProperty(slideData.titleStyle, 'fontFamily', 'Arial'),
-          fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor,
-          fill: getStyleProperty(slideData.titleStyle, 'color', '#000000'),
-          fontWeight: getStyleProperty(slideData.titleStyle, 'fontWeight', 'bold'),
-          textAlign: 'center',
-          originX: 'center',
-          originY: 'center',
-          width: maxTextWidth,
-          splitByGrapheme: true,
-          selectable: true,
-          editable: true,
-          evented: true,
-          lineHeight: 1.6,
-          lockMovementX: false,
-          lockMovementY: false,
-          lockRotation: false,
-          lockScalingX: false,
-          lockScalingY: false,
-          hasControls: true,
-          hasBorders: true,
-          cornerSize: 8,
-          cornerStyle: 'circle',
-          cornerColor: '#007bff',
-          borderColor: '#007bff',
-          borderScaleFactor: 2
-        })
-
-        // Make title editable
-        makeTextEditable(title)
-
-        // Add title to canvas
-        canvas.add(title)
-
-        // Add header picture if provided
-        if (headerPicture) {
-          fabric.Image.fromURL(headerPicture, (img) => {
-            // Scale image to fit nicely in the center of the header
-            const maxWidth = canvas.width * 0.4
-            const maxHeight = canvas.height * 0.3
-            const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1)
-
-            img.set({
-              left: canvas.width / 2,
-              top: canvas.height * 0.3, // Position above the title
-              scaleX: scale,
-              scaleY: scale,
-              originX: 'center',
-              originY: 'center',
-              selectable: true,
-              editable: true,
-              evented: true,
-              lockMovementX: false,
-              lockMovementY: false,
-              lockRotation: false,
-              lockScalingX: false,
-              lockScalingY: false
-            })
-
-            canvas.add(img)
-            canvas.renderAll()
+          const progressBarBg = new fabric.Rect({
+            left: canvas.width / 2,
+            top: progressBarY,
+            width: progressBarWidth,
+            height: progressBarHeight,
+            fill: isWhiteText ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            rx: progressBarHeight / 2,
+            ry: progressBarHeight / 2
           })
-        } else {
-          // If no header picture, just render the background and title
-          canvas.renderAll()
+
+          const progressBarFill = new fabric.Rect({
+            left: canvas.width / 2 - progressBarWidth / 2,
+            top: progressBarY,
+            width: (progressBarWidth * progress) / 100,
+            height: progressBarHeight,
+            fill: accent,
+            originX: 'left',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            rx: progressBarHeight / 2,
+            ry: progressBarHeight / 2
+          })
+
+          const progressText = new fabric.Text(`${Math.round(progress)}%`, {
+            left: canvas.width / 2,
+            top: progressBarY + 20 * scaleFactor,
+            fontSize: 14 * scaleFactor,
+            fill: '#000000',
+            fontFamily: 'Arial',
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false
+          })
+
+          canvas.add(progressBarBg, progressBarFill, progressText)
         }
+
+        // Page number indicator removed
+  
+        canvas.add(new fabric.Textbox('→', {
+          left: canvas.width - (100 * scaleFactor),
+          top: canvas.height - (100 * scaleFactor),
+          fontFamily: 'Inter',
+          fontSize: 48 * scaleFactor,
+          fill: '#000000',
+          selectable: false,
+        }));
       } else if (slideType === 'info') {
-        // Create info slide content with proper formatting
+        // Create info slide content with proper formatting and themed background
         console.log('Rendering info slide with data:', slideData)
         console.log('Has bulletPoints?', !!slideData.bulletPoints)
         console.log('Has subheadings?', !!slideData.subheadings)
@@ -667,23 +772,61 @@ const CanvasEditor = forwardRef(({
           }
         }
         
-        const wrappedTitle = wrapText(slideData.title || 'Info Slide', maxTextWidth, getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor)
+        // THEME: Dark background + subtle grid
+        canvas.setBackgroundColor('#0F0F10', canvas.renderAll.bind(canvas))
+        
+        // Brand label (top-left)
+        canvas.add(new fabric.Textbox('Liceria.Co', {
+          left: 80 * scaleFactor,
+          top: 80 * scaleFactor,
+          fontFamily: 'Inter',
+          fontSize: 32 * scaleFactor,
+          fill: '#F4B400',
+          fontWeight: 'bold',
+          selectable: false,
+        }))
+
+        // Decorative X pattern (top-right)
+        const xGroup = []
+        const cols = 4, rows = 4
+        const xSize = 28 * scaleFactor
+        const spacing = 56 * scaleFactor
+        const startX = canvas.width - (spacing * cols) - (40 * scaleFactor)
+        const startY = 60 * scaleFactor
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            xGroup.push(new fabric.Text('×', {
+              left: startX + c * spacing,
+              top: startY + r * spacing,
+              fontFamily: 'Inter',
+              fontSize: xSize,
+              fill: '#FFFFFF',
+              selectable: false,
+              evented: false
+            }))
+          }
+        }
+        canvas.add(new fabric.Group(xGroup, { selectable: false, evented: false }))
+
+        const titleLeft = canvas.width * 0.1
+        const cleanedTitle = cleanTitleFormatting(slideData.title || 'Info Slide')
+        const wrappedTitle = wrapText(cleanedTitle, maxTextWidth * 0.8, getStyleProperty(slideData.titleStyle, 'fontSize', 80) * scaleFactor)
         const title = createFormattedText(wrappedTitle, {
-          left: canvas.width / 2,
-          top: canvas.height * 0.15,
-          fontFamily: getStyleProperty(slideData.titleStyle, 'fontFamily', 'Arial'),
-          fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor,
-          fill: getStyleProperty(slideData.titleStyle, 'color', '#000000'),
+          left: titleLeft,
+          top: canvas.height * 0.22,
+          fontFamily: getStyleProperty(slideData.titleStyle, 'fontFamily', 'Inter'),
+          fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 80) * scaleFactor,
+          fill: slideData.accentColor || '#F4B400',
           fontWeight: getStyleProperty(slideData.titleStyle, 'fontWeight', 'bold'),
-          textAlign: 'center',
-          originX: 'center',
-          originY: 'center',
-          width: maxTextWidth,
+          textAlign: 'left',
+          originX: 'left',
+          originY: 'top',
+          width: maxTextWidth * 0.8,
           splitByGrapheme: true,
           selectable: true,
           editable: true,
           evented: true,
-          lineHeight: 1.4,
+          lineHeight: 1.1,
           lockMovementX: false,
           lockMovementY: false,
           lockRotation: false,
@@ -693,21 +836,25 @@ const CanvasEditor = forwardRef(({
 
         // Create subheadings and key points
         // Account for footer space (120px) when positioning text
-        const footerSpace = 120 * scaleFactor
+        const footerSpace = 140 * scaleFactor
         const availableHeight = canvas.height - footerSpace
-        let currentY = availableHeight * 0.3 + (canvas.height - availableHeight) / 2
+        let currentY = canvas.height * 0.42
         const lineHeight = 1.2 // Reduced line height for tighter spacing
         const objects = [title]
 
-        // Create accent rectangle for all info slides
+        // Decorative accent stroke near bottom-left
         const accentRect = new fabric.Rect({
-          left: canvas.width / 2,
-          top: canvas.height * 0.25, // Position below the title
-          width: 200 * scaleFactor,
-          height: 4 * scaleFactor,
-          fill: slideData.accentColor,
+          left: titleLeft + (180 * scaleFactor),
+          top: canvas.height * 0.78,
+          width: 300 * scaleFactor,
+          height: 6 * scaleFactor,
+          fill: slideData.accentColor || '#F4B400',
           originX: 'center',
-          originY: 'center'
+          originY: 'center',
+          rx: 3 * scaleFactor,
+          ry: 3 * scaleFactor,
+          selectable: false,
+          evented: false
         })
 
         // Handle different slide patterns based on slidePattern
@@ -727,7 +874,9 @@ const CanvasEditor = forwardRef(({
                 return
               }
               
-              const bulletText = wrapText(highlightImportantWords(bulletPoint), maxTextWidth, getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor)
+              // Use full bullet point without truncation to preserve complete sentences
+              const limitedBulletPoint = bulletPoint.trim()
+              const bulletText = wrapText(highlightImportantWords(limitedBulletPoint), maxTextWidth, getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor)
               const lines = bulletText.split('\n')
               const estimatedTextHeight = lines.length * getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor * 1.1 + 40
 
@@ -761,7 +910,7 @@ const CanvasEditor = forwardRef(({
                 top: currentY,
                 fontSize: getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor,
                 fontFamily: getStyleProperty(slideData.bulletStyle, 'fontFamily', 'Arial'),
-                fill: getStyleProperty(slideData.bulletStyle, 'color', '#333333'),
+                fill: getStyleProperty(slideData.bulletStyle, 'color', '#fff4e2'),
                 fontWeight: getStyleProperty(slideData.bulletStyle, 'fontWeight', 'normal'),
                 textAlign: 'left',
                 originX: 'left',
@@ -804,7 +953,9 @@ const CanvasEditor = forwardRef(({
             }
             
             console.log('Processing paragraph:', paragraph)
-            const paragraphText = wrapText(highlightImportantWords(paragraph), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor)
+            // Use full paragraph without truncation to preserve complete sentences
+            const limitedParagraph = paragraph.trim()
+            const paragraphText = wrapText(highlightImportantWords(limitedParagraph), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor)
             const lines = paragraphText.split('\n')
             const estimatedTextHeight = lines.length * getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor * 1.4 + 40
 
@@ -813,17 +964,17 @@ const CanvasEditor = forwardRef(({
               return
             }
 
-            const paragraphTextObj = createFormattedText(paragraphText, {
-              left: canvas.width / 2,
-              top: currentY * 2,
+              const paragraphTextObj = createFormattedText(paragraphText, {
+              left: titleLeft,
+              top: currentY,
               fontSize: getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor,
-              fontFamily: getStyleProperty(slideData.paragraphStyle, 'fontFamily', 'Arial'),
-              fill: getStyleProperty(slideData.paragraphStyle, 'color', '#333333'),
+              fontFamily: getStyleProperty(slideData.paragraphStyle, 'fontFamily', 'Inter'),
+              fill: getStyleProperty(slideData.paragraphStyle, 'color', '#fff4e2'),
               fontWeight: getStyleProperty(slideData.paragraphStyle, 'fontWeight', 'normal'),
-              textAlign: 'center',
-              originX: 'center',
-              originY: 'center',
-              width: maxTextWidth,
+              textAlign: 'left',
+              originX: 'left',
+              originY: 'top',
+              width: maxTextWidth * 0.8,
               splitByGrapheme: true,
               selectable: true,
               editable: true,
@@ -854,7 +1005,9 @@ const CanvasEditor = forwardRef(({
           // Single impactful line pattern
           if (impactfulLine && impactfulLine.trim() !== '') {
             console.log('Processing impactful line:', impactfulLine)
-            const impactfulText = wrapText(highlightImportantWords(impactfulLine), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 32) * scaleFactor)
+            // Use full impactful line without truncation to preserve complete sentences
+            const limitedImpactfulLine = impactfulLine.trim()
+            const impactfulText = wrapText(highlightImportantWords(limitedImpactfulLine), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 32) * scaleFactor)
             const lines = impactfulText.split('\n')
             const estimatedTextHeight = lines.length * getStyleProperty(slideData.paragraphStyle, 'fontSize', 32) * scaleFactor * 1.3 + 50
 
@@ -864,16 +1017,16 @@ const CanvasEditor = forwardRef(({
             }
 
             const impactfulTextObj = createFormattedText(impactfulText, {
-              left: canvas.width / 2,
-              top: currentY * 2,
+              left: titleLeft,
+              top: currentY,
               fontSize: getStyleProperty(slideData.paragraphStyle, 'fontSize', 32) * scaleFactor,
-              fontFamily: getStyleProperty(slideData.paragraphStyle, 'fontFamily', 'Arial'),
-              fill: getStyleProperty(slideData.paragraphStyle, 'color', '#333333'),
+              fontFamily: getStyleProperty(slideData.paragraphStyle, 'fontFamily', 'Inter'),
+              fill: getStyleProperty(slideData.paragraphStyle, 'color', '#fff4e2'),
               fontWeight: 'bold',
-              textAlign: 'center',
-              originX: 'center',
-              originY: 'center',
-              width: maxTextWidth,
+              textAlign: 'left',
+              originX: 'left',
+              originY: 'top',
+              width: maxTextWidth * 0.8,
               splitByGrapheme: true,
               selectable: true,
               editable: true,
@@ -904,7 +1057,9 @@ const CanvasEditor = forwardRef(({
           // Mixed content pattern - bullets + paragraph
           if (bulletPoints && Array.isArray(bulletPoints)) {
             bulletPoints.forEach((bulletPoint, index) => {
-              const bulletText = wrapText(highlightImportantWords(bulletPoint), maxTextWidth, getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor)
+              // Use full bullet point without truncation
+              const limitedBulletPoint = bulletPoint.trim()
+              const bulletText = wrapText(highlightImportantWords(limitedBulletPoint), maxTextWidth, getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor)
               const lines = bulletText.split('\n')
               const estimatedTextHeight = lines.length * getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor * 1.1 + 35
 
@@ -937,7 +1092,7 @@ const CanvasEditor = forwardRef(({
                 top: currentY,
                 fontSize: getStyleProperty(slideData.bulletStyle, 'fontSize', 30) * scaleFactor,
                 fontFamily: getStyleProperty(slideData.bulletStyle, 'fontFamily', 'Arial'),
-                fill: getStyleProperty(slideData.bulletStyle, 'color', '#333333'),
+              fill: getStyleProperty(slideData.bulletStyle, 'color', '#fff4e2'),
                 fontWeight: getStyleProperty(slideData.bulletStyle, 'fontWeight', 'normal'),
                 textAlign: 'left',
                 originX: 'left',
@@ -974,7 +1129,9 @@ const CanvasEditor = forwardRef(({
           // Add paragraph after bullets in mixed content
           if (paragraphs && paragraphs.length > 0) {
             const paragraph = paragraphs[0]
-            const paragraphText = wrapText(highlightImportantWords(paragraph), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor)
+            // Use full paragraph without truncation
+            const limitedParagraph = paragraph.trim()
+            const paragraphText = wrapText(highlightImportantWords(limitedParagraph), maxTextWidth, getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor)
             const lines = paragraphText.split('\n')
             const estimatedTextHeight = lines.length * getStyleProperty(slideData.paragraphStyle, 'fontSize', 30) * scaleFactor * 1.3 + 30
 
@@ -983,16 +1140,16 @@ const CanvasEditor = forwardRef(({
             }
 
             const paragraphTextObj = createFormattedText(paragraphText, {
-              left: canvas.width / 2,
+              left: titleLeft,
               top: currentY,
               fontSize: getStyleProperty(slideData.paragraphStyle, 'fontSize', 24) * scaleFactor,
-              fontFamily: getStyleProperty(slideData.paragraphStyle, 'fontFamily', 'Arial'),
-              fill: getStyleProperty(slideData.paragraphStyle, 'color', '#333333'),
+              fontFamily: getStyleProperty(slideData.paragraphStyle, 'fontFamily', 'Inter'),
+              fill: getStyleProperty(slideData.paragraphStyle, 'color', '#fff4e2'),
               fontWeight: getStyleProperty(slideData.paragraphStyle, 'fontWeight', 'normal'),
-              textAlign: 'center',
-              originX: 'center',
-              originY: 'center',
-              width: maxTextWidth,
+              textAlign: 'left',
+              originX: 'left',
+              originY: 'top',
+              width: maxTextWidth * 0.8,
               splitByGrapheme: true,
               selectable: true,
               editable: true,
@@ -1033,16 +1190,16 @@ const CanvasEditor = forwardRef(({
 
           // Subheading with formatting
           const subheadingText = createFormattedText(subheading.heading, {
-            left: canvas.width / 2,
+            left: titleLeft,
             top: currentY,
             fontSize: getStyleProperty(slideData.subheadingStyle, 'fontSize', 32) * scaleFactor,
-            fontFamily: getStyleProperty(slideData.subheadingStyle, 'fontFamily', 'Arial'),
-            fill: getStyleProperty(slideData.subheadingStyle, 'color', '#333333'),
+            fontFamily: getStyleProperty(slideData.subheadingStyle, 'fontFamily', 'Inter'),
+            fill: getStyleProperty(slideData.subheadingStyle, 'color', '#fff4e2'),
             fontWeight: getStyleProperty(slideData.subheadingStyle, 'fontWeight', 'bold'),
-            textAlign: 'center',
-            originX: 'center',
-            originY: 'center',
-            width: maxTextWidth,
+            textAlign: 'left',
+            originX: 'left',
+            originY: 'top',
+            width: maxTextWidth * 0.8,
             splitByGrapheme: true,
             selectable: true,
             editable: true,
@@ -1061,8 +1218,9 @@ const CanvasEditor = forwardRef(({
           // Key points with better spacing calculation
           if (subheading.keyPoints && Array.isArray(subheading.keyPoints)) {
             subheading.keyPoints.forEach((keyPoint, pointIndex) => {
-              // Calculate actual text height more accurately
-              const keyPointText = wrapText(highlightImportantWords(keyPoint), maxTextWidth, getStyleProperty(slideData.textStyle, 'fontSize', 20) * scaleFactor)
+              // Calculate actual text height more accurately, without truncating key points
+              const fullKeyPoint = highlightImportantWords(keyPoint).trim()
+              const keyPointText = wrapText(fullKeyPoint, maxTextWidth, getStyleProperty(slideData.textStyle, 'fontSize', 20) * scaleFactor)
               const lines = keyPointText.split('\n')
               const estimatedTextHeight = lines.length * getStyleProperty(slideData.textStyle, 'fontSize', 20) * scaleFactor * 1.1 + 35
 
@@ -1074,16 +1232,16 @@ const CanvasEditor = forwardRef(({
 
               // Create textbox with bold formatting for important words
               const keyPointTextObj = createFormattedText(keyPointText, {
-                left: canvas.width / 2,
+                left: titleLeft,
                 top: currentY,
                 fontSize: getStyleProperty(slideData.textStyle, 'fontSize', 20) * scaleFactor,
-                fontFamily: getStyleProperty(slideData.textStyle, 'fontFamily', 'Arial'),
-                fill: getStyleProperty(slideData.textStyle, 'color', '#333333'),
+                fontFamily: getStyleProperty(slideData.textStyle, 'fontFamily', 'Inter'),
+                fill: getStyleProperty(slideData.textStyle, 'color', '#fff4e2'),
                 fontWeight: getStyleProperty(slideData.textStyle, 'fontWeight', 'normal'),
-                textAlign: 'center',
-                originX: 'center',
-                originY: 'center',
-                width: maxTextWidth,
+                textAlign: 'left',
+                originX: 'left',
+                originY: 'top',
+                width: maxTextWidth * 0.8,
                 splitByGrapheme: true,
                 selectable: true,
                 editable: true,
@@ -1124,59 +1282,73 @@ const CanvasEditor = forwardRef(({
 
         } // Close the subheadings if block
 
-        // Add progress bar
-        const progressBarWidth = canvas.width * 0.5
-        const progressBarHeight = 15 * scaleFactor
-        const progressBarY = canvas.height - (footerSpace / 2)
+        // Footer handle removed
 
-        // Calculate progress based on current slide
-        const progress = ((currentSlideIndex + 1) / totalSlides) * 100
+        // Page number indicator removed
 
-        // Progress bar background
-        const progressBarBg = new fabric.Rect({
-          left: canvas.width / 2,
-          top: progressBarY,
-          width: progressBarWidth,
-          height: progressBarHeight,
-          fill: 'rgba(0,0,0,0.1)',
-          originX: 'center',
-          originY: 'center',
+        // Add bottom-right arrow similar to header (use accent for visibility on dark bg)
+        canvas.add(new fabric.Textbox('→', {
+          left: canvas.width - (100 * scaleFactor),
+          top: canvas.height - (100 * scaleFactor),
+          fontFamily: 'Inter',
+          fontSize: 48 * scaleFactor,
+          fill: slideData.accentColor || '#F4B400',
           selectable: false,
-          evented: false,
-          rx: progressBarHeight / 2,
-          ry: progressBarHeight / 2
-        })
+        }))
 
-        // Progress bar fill
-        const progressBarFill = new fabric.Rect({
-          left: canvas.width / 2 - progressBarWidth / 2,
-          top: progressBarY,
-          width: (progressBarWidth * progress) / 100,
-          height: progressBarHeight,
-          fill: slideData.accentColor,
-          originX: 'left',
-          originY: 'center',
-          selectable: false,
-          evented: false,
-          rx: progressBarHeight / 2,
-          ry: progressBarHeight / 2
-        })
+        // Sleek progress bar with percentage (bottom center)
+        {
+          const progressBarWidth = canvas.width * 0.5
+          const progressBarHeight = 15 * scaleFactor
+          const progressBarY = canvas.height - (60 * scaleFactor)
+          const progress = ((currentSlideIndex + 1) / totalSlides) * 100
+          const accent = slideData.accentColor || '#F4B400'
+          const titleColor = (getStyleProperty?.(slideData.titleStyle, 'color', '#fff4e2') || '#fff4e2').toString().toLowerCase()
+          const isWhiteText = titleColor === '#ffffff' || titleColor === 'white' || titleColor === 'rgb(255,255,255)'
 
-        // Progress text
-        const progressText = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
-          left: canvas.width / 2,
-          top: progressBarY + 20 * scaleFactor,
-          fontSize: 14 * scaleFactor,
-          fill: slideData.accentColor,
-          fontFamily: 'Arial',
-          textAlign: 'center',
-          originX: 'center',
-          originY: 'center',
-          selectable: false,
-          evented: false
-        })
+          const progressBarBg = new fabric.Rect({
+            left: canvas.width / 2,
+            top: progressBarY,
+            width: progressBarWidth,
+            height: progressBarHeight,
+            fill: isWhiteText ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.15)',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            rx: progressBarHeight / 2,
+            ry: progressBarHeight / 2
+          })
 
-        // Arrow removed as requested
+          const progressBarFill = new fabric.Rect({
+            left: canvas.width / 2 - progressBarWidth / 2,
+            top: progressBarY,
+            width: (progressBarWidth * progress) / 100,
+            height: progressBarHeight,
+            fill: accent,
+            originX: 'left',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            rx: progressBarHeight / 2,
+            ry: progressBarHeight / 2
+          })
+
+          const progressText = new fabric.Text(`${Math.round(progress)}%`, {
+            left: canvas.width / 2,
+            top: progressBarY + 20 * scaleFactor,
+            fontSize: 14 * scaleFactor,
+            fill: isWhiteText ? '#FFFFFF' : accent,
+            fontFamily: 'Arial',
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false
+          })
+
+          canvas.add(progressBarBg, progressBarFill, progressText)
+        }
 
         // Ensure all text objects are editable
         objects.forEach(obj => {
@@ -1219,7 +1391,6 @@ const CanvasEditor = forwardRef(({
         }
         
         objects.forEach(obj => canvas.add(obj)) // Add all text objects
-        canvas.add(progressBarBg, progressBarFill, progressText) // Add progress bar elements
       } else if (slideType === 'image') {
         // Create image slide with generated image and text
         console.log('Image slide detected, slideData:', slideData)
@@ -1259,7 +1430,7 @@ const CanvasEditor = forwardRef(({
               top: canvas.height * 0.65,
               fontFamily: getStyleProperty(slideData.titleStyle, 'fontFamily', 'Arial'),
               fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor,
-              fill: getStyleProperty(slideData.titleStyle, 'color', '#000000'),
+              fill: slideData.accentColor || '#F4B400',
               fontWeight: getStyleProperty(slideData.titleStyle, 'fontWeight', 'bold'),
               textAlign: 'center',
               originX: 'center',
@@ -1329,7 +1500,7 @@ const CanvasEditor = forwardRef(({
               top: progressBarY,
               width: (progressBarWidth * progress) / 100,
               height: progressBarHeight,
-              fill: slideData.accentColor,
+              fill: slideData.accentColor || '#F4B400',
               originX: 'left',
               originY: 'center',
               selectable: false,
@@ -1338,7 +1509,7 @@ const CanvasEditor = forwardRef(({
               ry: progressBarHeight / 2
             })
 
-            const progressText = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
+            const progressText = new fabric.Text(`${Math.round(progress)}%`, {
               left: canvas.width / 2,
               top: progressBarY + 20 * scaleFactor,
               fontSize: 14 * scaleFactor,
@@ -1351,11 +1522,21 @@ const CanvasEditor = forwardRef(({
               evented: false
             })
 
+            // Arrow like header (bottom-right)
+            const arrow = new fabric.Textbox('→', {
+              left: canvas.width - (100 * scaleFactor),
+              top: canvas.height - (100 * scaleFactor),
+              fontFamily: 'Inter',
+              fontSize: 48 * scaleFactor,
+              fill: slideData.accentColor || '#F4B400',
+              selectable: false,
+            })
+
             // Make text editable
             makeTextEditable(title)
             makeTextEditable(subtitle)
 
-            canvas.add(img, accentRect, title, subtitle, progressBarBg, progressBarFill, progressText)
+            canvas.add(img, accentRect, title, subtitle, progressBarBg, progressBarFill, progressText, arrow)
             canvas.renderAll()
             setIsLoading(false)
             setIsInitialLoad(false)
@@ -1370,7 +1551,7 @@ const CanvasEditor = forwardRef(({
             top: canvas.height * 0.4,
             fontFamily: getStyleProperty(slideData.titleStyle, 'fontFamily', 'Arial'),
             fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor,
-            fill: getStyleProperty(slideData.titleStyle, 'color', '#000000'),
+            fill: slideData.accentColor || '#F4B400',
             fontWeight: getStyleProperty(slideData.titleStyle, 'fontWeight', 'bold'),
             textAlign: 'center',
             originX: 'center',
@@ -1427,7 +1608,7 @@ const CanvasEditor = forwardRef(({
             top: progressBarY,
             width: (progressBarWidth * progress) / 100,
             height: progressBarHeight,
-            fill: slideData.accentColor,
+            fill: '#000000',
             originX: 'left',
             originY: 'center',
             selectable: false,
@@ -1436,7 +1617,7 @@ const CanvasEditor = forwardRef(({
             ry: progressBarHeight / 2
           })
 
-          const progressText = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
+          const progressText = new fabric.Text(`${Math.round(progress)}%`, {
             left: canvas.width / 2,
             top: progressBarY + 20 * scaleFactor,
             fontSize: 14 * scaleFactor,
@@ -1449,22 +1630,85 @@ const CanvasEditor = forwardRef(({
             evented: false
           })
 
+          // Arrow like header (bottom-right)
+          const arrow = new fabric.Textbox('→', {
+            left: canvas.width - (100 * scaleFactor),
+            top: canvas.height - (100 * scaleFactor),
+            fontFamily: 'Inter',
+            fontSize: 48 * scaleFactor,
+            fill: slideData.accentColor || '#F4B400',
+            selectable: false,
+          })
+
           makeTextEditable(title)
           makeTextEditable(subtitle)
 
-          canvas.add(title, subtitle, progressBarBg, progressBarFill, progressText)
+          canvas.add(title, subtitle, progressBarBg, progressBarFill, progressText, arrow)
           setIsLoading(false)
           setIsInitialLoad(false)
         }
       } else if (slideType === 'end') {
-        // Create end slide with CTA and proper formatting
+        // Create end slide with CTA and header-themed background/decor
+        // Mirror header theme: beach color background, grid, brand text, dots, footer elements
+        canvas.setBackgroundColor('#FBEFDB', canvas.renderAll.bind(canvas))
+        const gridSpacingEnd = 40 * scaleFactor
+        const gridLinesEnd = []
+        for (let i = 1; i < canvas.width / gridSpacingEnd; i++) {
+          gridLinesEnd.push(new fabric.Line([i * gridSpacingEnd, 0, i * gridSpacingEnd, canvas.height], { stroke: 'rgba(0,0,0,0.05)', strokeWidth: 1.5, selectable: false, evented: false }))
+        }
+        for (let i = 1; i < canvas.height / gridSpacingEnd; i++) {
+          gridLinesEnd.push(new fabric.Line([0, i * gridSpacingEnd, canvas.width, i * gridSpacingEnd], { stroke: 'rgba(0,0,0,0.05)', strokeWidth: 1.5, selectable: false, evented: false }))
+        }
+        canvas.add(new fabric.Group(gridLinesEnd, { selectable: false, evented: false }))
+
+        // Brand label top-left
+        canvas.add(new fabric.Textbox('Liceria.Co', {
+          left: 80 * scaleFactor,
+          top: 80 * scaleFactor,
+          fontFamily: 'Inter',
+          fontSize: 32 * scaleFactor,
+          fill: '#000000',
+          fontWeight: 'bold',
+          selectable: false,
+        }))
+
+        // Decorative dot pattern top-right (same as header)
+        const dotPatternEnd = []
+        const dotColorEnd = 'rgba(244, 180, 0, 0.5)'
+        for (let i = 0; i < 8; i++) {
+          for (let j = 0; j < 15; j++) {
+            if (j > i && j < 15 - i) {
+              dotPatternEnd.push(new fabric.Circle({
+                left: canvas.width - (280 * scaleFactor) + (j * 12 * scaleFactor),
+                top: 80 * scaleFactor + (i * 12 * scaleFactor),
+                radius: 3 * scaleFactor,
+                fill: dotColorEnd,
+                selectable: false,
+                evented: false
+              }))
+            }
+          }
+        }
+        canvas.add(new fabric.Group(dotPatternEnd, { selectable: false, evented: false }))
+
+        // Quotation mark (subtle decorative, same family as header)
+        canvas.add(new fabric.Textbox('"', {
+          left: 70 * scaleFactor,
+          top: 180 * scaleFactor,
+          fontFamily: 'Georgia',
+          fontSize: 120 * scaleFactor,
+          fill: '#000000',
+          opacity: 0.6,
+          selectable: false,
+        }))
+
         const wrappedTitle = wrapText(slideData.title, maxTextWidth, getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor)
         const title = createFormattedText(wrappedTitle, {
           left: canvas.width / 2,
           top: canvas.height * 0.3,
           fontFamily: getStyleProperty(slideData.titleStyle, 'fontFamily', 'Arial'),
           fontSize: getStyleProperty(slideData.titleStyle, 'fontSize', 48) * scaleFactor,
-          fill: getStyleProperty(slideData.titleStyle, 'color', '#000000'),
+          fill: '#000000',
           fontWeight: getStyleProperty(slideData.titleStyle, 'fontWeight', 'bold'),
           textAlign: 'center',
           originX: 'center',
@@ -1488,7 +1732,7 @@ const CanvasEditor = forwardRef(({
           top: canvas.height * 0.5,
           fontFamily: getStyleProperty(slideData.subtitleStyle, 'fontFamily', 'Arial'),
           fontSize: getStyleProperty(slideData.subtitleStyle, 'fontSize', 24) * scaleFactor,
-          fill: getStyleProperty(slideData.subtitleStyle, 'color', '#333333'),
+          fill: '#000000',
           fontWeight: getStyleProperty(slideData.subtitleStyle, 'fontWeight', 'normal'),
           textAlign: 'center',
           originX: 'center',
@@ -1512,7 +1756,7 @@ const CanvasEditor = forwardRef(({
           top: canvas.height * 0.7,
           fontFamily: getStyleProperty(slideData.ctaStyle, 'fontFamily', 'Arial'),
           fontSize: getStyleProperty(slideData.ctaStyle, 'fontSize', 30) * scaleFactor,
-          fill: getStyleProperty(slideData.ctaStyle, 'color', '#007bff'),
+          fill: '#000000',
           fontWeight: getStyleProperty(slideData.ctaStyle, 'fontWeight', 'bold'),
           textAlign: 'center',
           originX: 'center',
@@ -1536,60 +1780,9 @@ const CanvasEditor = forwardRef(({
           top: canvas.height * 0.4,
           width: 200 * scaleFactor,
           height: 4 * scaleFactor,
-          fill: slideData.accentColor,
+          fill: '#F4B400',
           originX: 'center',
           originY: 'center'
-        })
-
-        // Add progress bar to end slide as well
-        const footerSpace = 120 * scaleFactor
-        const progressBarWidth = canvas.width * 0.5
-        const progressBarHeight = 15 * scaleFactor
-        const progressBarY = canvas.height - (footerSpace / 2)
-        const progress = ((currentSlideIndex + 1) / totalSlides) * 100
-
-        // Progress bar background
-        const progressBarBg = new fabric.Rect({
-          left: canvas.width / 2,
-          top: progressBarY,
-          width: progressBarWidth,
-          height: progressBarHeight,
-          fill: 'rgba(0,0,0,0.1)',
-          originX: 'center',
-          originY: 'center',
-          selectable: false,
-          evented: false,
-          rx: progressBarHeight / 2,
-          ry: progressBarHeight / 2
-        })
-
-        // Progress bar fill
-        const progressBarFill = new fabric.Rect({
-          left: canvas.width / 2 - progressBarWidth / 2,
-          top: progressBarY,
-          width: (progressBarWidth * progress) / 100,
-          height: progressBarHeight,
-          fill: slideData.accentColor,
-          originX: 'left',
-          originY: 'center',
-          selectable: false,
-          evented: false,
-          rx: progressBarHeight / 2,
-          ry: progressBarHeight / 2
-        })
-
-        // Progress text
-        const progressText = new fabric.Text(`${currentSlideIndex + 1}/${totalSlides}`, {
-          left: canvas.width / 2,
-          top: progressBarY + 20 * scaleFactor,
-          fontSize: 14 * scaleFactor,
-          fill: slideData.accentColor,
-          fontFamily: 'Arial',
-          textAlign: 'center',
-          originX: 'center',
-          originY: 'center',
-          selectable: false,
-          evented: false
         })
 
         // Make all text objects editable
@@ -1597,7 +1790,72 @@ const CanvasEditor = forwardRef(({
         makeTextEditable(subtitle)
         makeTextEditable(ctaText)
 
-        canvas.add(accentRect, title, subtitle, ctaText, progressBarBg, progressBarFill, progressText)
+        // Footer handle removed
+
+        // Page number label removed
+
+        canvas.add(new fabric.Textbox('←', {
+          left: canvas.width - (100 * scaleFactor),
+          top: canvas.height - (100 * scaleFactor),
+          fontFamily: 'Inter',
+          fontSize: 48 * scaleFactor,
+          fill: '#000000',
+          selectable: false,
+        }))
+
+        // Sleek progress bar with percentage (bottom center) – match header theme
+        {
+          const progressBarWidth = canvas.width * 0.5
+          const progressBarHeight = 15 * scaleFactor
+          const progressBarY = canvas.height - (60 * scaleFactor)
+          const progress = ((currentSlideIndex + 1) / totalSlides) * 100
+          const accent = '#F4B400'
+
+          const progressBarBg = new fabric.Rect({
+            left: canvas.width / 2,
+            top: progressBarY,
+            width: progressBarWidth,
+            height: progressBarHeight,
+            fill: 'rgba(0,0,0,0.1)',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            rx: progressBarHeight / 2,
+            ry: progressBarHeight / 2
+          })
+
+          const progressBarFill = new fabric.Rect({
+            left: canvas.width / 2 - progressBarWidth / 2,
+            top: progressBarY,
+            width: (progressBarWidth * progress) / 100,
+            height: progressBarHeight,
+            fill: '#000000',
+            originX: 'left',
+            originY: 'center',
+            selectable: false,
+            evented: false,
+            rx: progressBarHeight / 2,
+            ry: progressBarHeight / 2
+          })
+
+          const progressText = new fabric.Text(`${Math.round(progress)}%`, {
+            left: canvas.width / 2,
+            top: progressBarY + 20 * scaleFactor,
+            fontSize: 14 * scaleFactor,
+            fill: '#000000',
+            fontFamily: 'Arial',
+            textAlign: 'center',
+            originX: 'center',
+            originY: 'center',
+            selectable: false,
+            evented: false
+          })
+
+          canvas.add(progressBarBg, progressBarFill, progressText)
+        }
+
+        canvas.add(accentRect, title, subtitle, ctaText)
       }
 
       canvas.renderAll()
@@ -1625,9 +1883,12 @@ const CanvasEditor = forwardRef(({
         // Save the current slide state whenever objects are modified
         const slideState = {
           objects: canvas.toJSON(),
+          width: canvas.width,
+          height: canvas.height,
           timestamp: Date.now()
         }
-        onSlideUpdate({ objects, canvas, slideState })
+        // Include the slide index at the time of this update to avoid race conditions
+        onSlideUpdate({ objects, canvas, slideState, slideIndex: previousSlideIndexRef.current })
       }, 300) // 300ms debounce
     }
   }
@@ -1686,7 +1947,7 @@ const CanvasEditor = forwardRef(({
     }
 
     const canvas = fabricCanvasRef.current
-    const state = JSON.stringify(canvas.toJSON())
+    const state = JSON.stringify(canvas.toJSON(['highlightColor']))
 
     setUndoHistory(prev => {
       const newHistory = [...prev, state]
@@ -1708,7 +1969,7 @@ const CanvasEditor = forwardRef(({
     if (!canvas) return
 
     // Save current state to redo history
-    const currentState = JSON.stringify(canvas.toJSON())
+    const currentState = JSON.stringify(canvas.toJSON(['highlightColor']))
     setRedoHistory(prev => [...prev, currentState])
 
     // Restore previous state
@@ -1729,7 +1990,7 @@ const CanvasEditor = forwardRef(({
     if (!canvas) return
 
     // Save current state to undo history
-    const currentState = JSON.stringify(canvas.toJSON())
+    const currentState = JSON.stringify(canvas.toJSON(['highlightColor']))
     setUndoHistory(prev => [...prev, currentState])
 
     // Restore next state
@@ -1752,7 +2013,7 @@ const CanvasEditor = forwardRef(({
     setIsManualDelete(true)
 
     // Save state BEFORE deletion so undo can restore the deleted object
-    const state = JSON.stringify(canvas.toJSON())
+    const state = JSON.stringify(canvas.toJSON(['highlightColor']))
     setUndoHistory(prev => {
       const newHistory = [...prev, state]
       return newHistory.slice(-10)
@@ -2069,6 +2330,27 @@ const CanvasEditor = forwardRef(({
     return { text: resultText, styles }
   }
 
+  // Helper: convert flat character-index styles to Fabric Textbox line/char styles
+  const toTextboxStyles = (text, flatStyles) => {
+    if (!flatStyles || Object.keys(flatStyles).length === 0) return null
+    const lines = text.split('\n')
+    const nested = {}
+    let globalIndex = 0
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+      const line = lines[lineIdx]
+      for (let i = 0; i < line.length; i++) {
+        if (flatStyles[globalIndex]) {
+          if (!nested[lineIdx]) nested[lineIdx] = {}
+          nested[lineIdx][i] = { ...flatStyles[globalIndex] }
+        }
+        globalIndex++
+      }
+      // account for the newline character between lines
+      globalIndex++
+    }
+    return Object.keys(nested).length > 0 ? nested : null
+  }
+
   // Helper function to create formatted text with markdown support
   const createFormattedText = (text, options = {}) => {
     const { text: cleanText, styles } = parseMarkdownText(text)
@@ -2079,126 +2361,138 @@ const CanvasEditor = forwardRef(({
       splitByGrapheme: true
     })
 
-    // Apply formatting styles
-    if (Object.keys(styles).length > 0) {
-      textObj.set('styles', styles)
-      console.log('Applied styles to text:', styles)
+    // Apply formatting styles using Fabric's expected nested structure
+    const nestedStyles = toTextboxStyles(cleanText, styles)
+    if (nestedStyles) {
+      textObj.set('styles', nestedStyles)
     }
 
     return textObj
   }
 
-  // Helper function to create text highlight with rounded, fluid appearance
-  const createTextHighlight = (textObj, color = '#ffff00', opacity = 0.3) => {
-    const fontSize = textObj.fontSize
-    const boundingRect = textObj.getBoundingRect()
-    const padding = fontSize * 0.2 // Reduced padding for better space utilization
-    const cornerRadius = fontSize * 0.3 // Rounded corners based on font size
-
-    return new fabric.Rect({
-      left: 0, // Position relative to group center
-      top: 0, // Position relative to group center
-      width: boundingRect.width + padding,
-      height: boundingRect.height + (padding * 0.6),
-      fill: color,
-      opacity: opacity,
-      originX: 'center',
-      originY: 'center',
-      selectable: false,
-      evented: false,
-      rx: cornerRadius, // Horizontal corner radius
-      ry: cornerRadius, // Vertical corner radius
-      stroke: 'none', // No border for cleaner look
-      shadow: new fabric.Shadow({
-        color: 'rgba(0,0,0,0.1)',
-        blur: fontSize * 0.2,
-        offsetX: 0,
-        offsetY: fontSize * 0.1
-      })
-    })
-  }
-
-  // Function to toggle text highlight
+  // Character-level text highlighting implementation with padding
   const toggleTextHighlight = (textObj, color = '#ffff00') => {
-    if (!textObj || textObj.type !== 'text') return
+    if (!textObj || (textObj.type !== 'text' && textObj.type !== 'textbox')) return
 
     const canvas = fabricCanvasRef.current
-    const objects = canvas.getObjects()
-
-    // Check if highlight already exists for this text
-    const existingHighlight = objects.find(obj =>
-      obj.highlightFor === textObj && obj.type === 'rect'
-    )
-
-    if (existingHighlight) {
-      // Remove existing highlight
-      canvas.remove(existingHighlight)
+    const text = textObj.text || ''
+    
+    // Check if text is currently highlighted
+    const isHighlighted = textObj.highlightColor !== undefined
+    
+    if (isHighlighted) {
+      // Remove highlight: clear all character styles and padding
+      textObj.highlightColor = undefined
+      
+      // For single-line text objects
+      if (textObj.type === 'text') {
+        textObj.set('styles', {})
+      } else {
+        // For multi-line textbox objects, clear styles entirely to avoid
+        // undefined-only style entries that break Fabric serialization
+        textObj.set('styles', {})
+      }
+      
+      // Remove stroke, shadow, and padding
+      textObj.set({
+        stroke: undefined,
+        strokeWidth: 0,
+        shadow: null,
+        padding: 0
+      })
     } else {
-      // Create new highlight
-      const highlight = createTextHighlight(textObj, color, 0.3)
-      highlight.highlightFor = textObj // Store reference to the text object
-      canvas.add(highlight)
-      canvas.sendToBack(highlight) // Send highlight behind text
+      // Add highlight: apply background color to each character
+      textObj.highlightColor = color
+      
+      // Calculate padding based on font size for better visual spacing
+      const fontSize = textObj.fontSize || 20
+      const padding = Math.max(2, fontSize * 0.15)
+      
+      // For single-line text objects
+      if (textObj.type === 'text') {
+        const styles = {}
+        for (let i = 0; i < text.length; i++) {
+          styles[i] = {
+            textBackgroundColor: color
+          }
+        }
+        textObj.set('styles', { 0: styles })
+      } else {
+        // For multi-line textbox objects
+        const lines = text.split('\n')
+        const newStyles = {}
+        
+        lines.forEach((line, lineIndex) => {
+          newStyles[lineIndex] = {}
+          for (let i = 0; i < line.length; i++) {
+            newStyles[lineIndex][i] = {
+              textBackgroundColor: color
+            }
+          }
+        })
+        
+        textObj.set('styles', newStyles)
+      }
+      
+      // Add stroke, shadow, and padding for better visibility
+      textObj.set({
+        stroke: '#000000',
+        strokeWidth: Math.max(1, fontSize * 0.05),
+        padding: padding,
+        shadow: new fabric.Shadow({
+          color: 'rgba(0,0,0,0.2)',
+          blur: fontSize * 0.15,
+          offsetX: 0,
+          offsetY: fontSize * 0.08
+        })
+      })
     }
-
+    
     canvas.renderAll()
   }
 
-  // Function to update text highlight when text is moved or resized
+  // Update text highlight when text content changes
   const updateTextHighlight = (textObj) => {
-    if (!textObj) return
+    if (!textObj || !textObj.highlightColor) return
 
     const canvas = fabricCanvasRef.current
-    const objects = canvas.getObjects()
-
-    // Handle both individual text objects and grouped text objects
-    let targetTextObj = textObj
-    let existingHighlight = null
-
-    // Check if the text object is part of a group
-    if (textObj.group) {
-      // If it's in a group, find the highlight within the same group
-      const groupObjects = textObj.group.getObjects()
-      existingHighlight = groupObjects.find(obj =>
-        obj.highlightFor === textObj && obj.type === 'rect'
-      )
-      targetTextObj = textObj
+    const text = textObj.text || ''
+    const color = textObj.highlightColor
+    
+    // Calculate padding based on font size
+    const fontSize = textObj.fontSize || 20
+    const padding = Math.max(2, fontSize * 0.15)
+    
+    // Reapply highlight to all characters (in case text was edited)
+    if (textObj.type === 'text') {
+      const styles = {}
+      for (let i = 0; i < text.length; i++) {
+        styles[i] = {
+          textBackgroundColor: color
+        }
+      }
+      textObj.set('styles', { 0: styles })
     } else {
-      // If it's a standalone text object, find highlight in canvas
-      existingHighlight = objects.find(obj =>
-        obj.highlightFor === textObj && obj.type === 'rect'
-      )
-      targetTextObj = textObj
-    }
-
-    if (existingHighlight) {
-      // Update highlight position and size with rounded styling
-      const fontSize = targetTextObj.fontSize
-      const boundingRect = targetTextObj.getBoundingRect()
-      const padding = fontSize * 0.4
-      const cornerRadius = fontSize * 0.3
-
-      // For grouped objects, position relative to group center
-      const leftPos = targetTextObj.group ? 0 : targetTextObj.left
-      const topPos = targetTextObj.group ? 0 : targetTextObj.top
-
-      existingHighlight.set({
-        left: leftPos,
-        top: topPos,
-        width: boundingRect.width + padding,
-        height: boundingRect.height + (padding * 0.6),
-        rx: cornerRadius,
-        ry: cornerRadius,
-        shadow: new fabric.Shadow({
-          color: 'rgba(0,0,0,0.1)',
-          blur: fontSize * 0.2,
-          offsetX: 0,
-          offsetY: fontSize * 0.1
-        })
+      // For multi-line textbox objects
+      const lines = text.split('\n')
+      const newStyles = {}
+      
+      lines.forEach((line, lineIndex) => {
+        newStyles[lineIndex] = {}
+        for (let i = 0; i < line.length; i++) {
+          newStyles[lineIndex][i] = {
+            textBackgroundColor: color
+          }
+        }
       })
-
-      canvas.renderAll()
+      
+      textObj.set('styles', newStyles)
     }
+    
+    // Ensure padding is maintained
+    textObj.set('padding', padding)
+    
+    canvas.renderAll()
   }
 
   const addText = () => {
@@ -2272,10 +2566,7 @@ const CanvasEditor = forwardRef(({
       borderScaleFactor: 2
     })
 
-    // Create highlight for the text
-    const textHighlight = createTextHighlight(text, '#ffff00', 0.3)
-
-    canvas.add(textHighlight, text)
+    canvas.add(text)
     canvas.setActiveObject(text)
     canvas.renderAll()
   }
@@ -2467,16 +2758,16 @@ const CanvasEditor = forwardRef(({
   // Make the function available globally for debugging
   window.enableTextEditing = enableTextEditing
 
-  // Get current canvas state for PDF export
-  const getCurrentCanvasState = () => {
+  // Get current slide state (for saving on navigation/PDF export)
+  const getCurrentSlideState = () => {
     if (!fabricCanvasRef.current) return null
 
     const canvas = fabricCanvasRef.current
     return {
-      canvasData: canvas.toDataURL('image/png', 1.0),
+      objects: canvas.toJSON(),
       width: canvas.width,
       height: canvas.height,
-      objects: canvas.getObjects().map(obj => obj.toObject())
+      timestamp: Date.now()
     }
   }
 
@@ -2495,7 +2786,7 @@ const CanvasEditor = forwardRef(({
     toggleTextHighlight,
     enableTextEditing,
     handleDeleteSelected,
-    getCurrentCanvasState
+    getCurrentSlideState
   }))
 
   // Calculate word count for current slide

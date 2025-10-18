@@ -122,40 +122,46 @@ class PDFExportService {
    * @param {Object} carouselData - The carousel data containing all slides
    * @param {string} headerPicture - Optional header picture data URL
    */
-  async generateCarouselPDF(carouselData, headerPicture = null) {
+  async generateCarouselPDF(carouselData, headerPicture = null, options = {}) {
     try {
       this.initializePDF()
       
-      // Handle multiple image slides from Gemini service
+      // Use saved slide states if provided to match user edits exactly
+      const savedStates = options.savedStates || null
+
+      // Use ALL image slides to match UI ordering (even if no generatedImage)
       const imageSlides = carouselData.imageSlides || []
-      const validImageSlides = imageSlides.filter(slide => slide.generatedImage)
-      const hasImageSlides = validImageSlides.length > 0
-      const totalSlides = 2 + carouselData.infoSlides.length + validImageSlides.length // Header + info slides + valid image slides + end slide
+      const hasImageSlides = imageSlides.length > 0
+      const totalSlides = 2 + carouselData.infoSlides.length + imageSlides.length // Header + info slides + image slides + end slide
       
       console.log('PDF Export Debug Info:')
       console.log('- Total info slides:', carouselData.infoSlides.length)
       console.log('- Total image slides:', imageSlides.length)
-      console.log('- Valid image slides (with generated images):', validImageSlides.length)
-      console.log('- Has image slides with generated images:', hasImageSlides)
+      console.log('- Has image slides:', hasImageSlides)
       console.log('- Total slides in PDF:', totalSlides)
       
       let currentSlideIndex = 0
       
-      // Add header slide
+      // Add header slide (prefer saved state if present at index 0)
       console.log('Generating header slide...')
-      const headerCanvas = await canvasGenerator.createSlideCanvas(
-        carouselData.headerSlide, 
-        'header', 
-        headerPicture, 
-        currentSlideIndex, 
-        totalSlides
-      )
-      await this.addFabricCanvasToPDF(headerCanvas, currentSlideIndex)
+      if (savedStates && savedStates[0]?.objects) {
+        const tmpCanvas = await canvasGenerator.createCanvasFromSavedState(savedStates[0])
+        await this.addFabricCanvasToPDF(tmpCanvas, currentSlideIndex)
+      } else {
+        const headerCanvas = await canvasGenerator.createSlideCanvas(
+          carouselData.headerSlide, 
+          'header', 
+          headerPicture, 
+          currentSlideIndex, 
+          totalSlides
+        )
+        await this.addFabricCanvasToPDF(headerCanvas, currentSlideIndex)
+      }
       currentSlideIndex++
       
       // Add slides in interleaved pattern to match UI order: alternate between info and image slides
       const infoSlidesCount = carouselData.infoSlides.length
-      const imageSlidesCount = validImageSlides.length
+      const imageSlidesCount = imageSlides.length
       const maxSlides = Math.max(infoSlidesCount, imageSlidesCount)
       
       let infoIndex = 0
@@ -165,48 +171,79 @@ class PDFExportService {
         // Add info slide if available
         if (infoIndex < infoSlidesCount) {
           console.log(`Generating info slide ${infoIndex + 1}...`)
-          const infoCanvas = await canvasGenerator.createSlideCanvas(
-            carouselData.infoSlides[infoIndex], 
-            'info', 
-            null, 
-            currentSlideIndex, 
-            totalSlides
-          )
-          await this.addFabricCanvasToPDF(infoCanvas, currentSlideIndex)
+          // Calculate the absolute index for this interleaved slide: header is 0, then interleaved start at 1
+          const absoluteIndex = currentSlideIndex
+          if (savedStates && savedStates[absoluteIndex]?.objects) {
+            const tmpCanvas = await canvasGenerator.createCanvasFromSavedState(savedStates[absoluteIndex])
+            await this.addFabricCanvasToPDF(tmpCanvas, currentSlideIndex)
+          } else {
+            const infoCanvas = await canvasGenerator.createSlideCanvas(
+              carouselData.infoSlides[infoIndex], 
+              'info', 
+              null, 
+              currentSlideIndex, 
+              totalSlides
+            )
+            await this.addFabricCanvasToPDF(infoCanvas, currentSlideIndex)
+          }
           currentSlideIndex++
           infoIndex++
         }
         
         // Add image slide if available
         if (imageIndex < imageSlidesCount) {
-          const currentImageSlide = validImageSlides[imageIndex]
+          const currentImageSlide = imageSlides[imageIndex]
           console.log(`Generating image slide ${imageIndex + 1}...`)
           console.log('- Image slide data:', currentImageSlide)
-          console.log('- Has generated image:', !!currentImageSlide.generatedImage)
+          console.log('- Has generated image:', !!currentImageSlide?.generatedImage)
           
-          const imageCanvas = await canvasGenerator.createSlideCanvas(
-            currentImageSlide, 
-            'image', 
-            null, 
-            currentSlideIndex, 
-            totalSlides
-          )
-          await this.addFabricCanvasToPDF(imageCanvas, currentSlideIndex)
+          const absoluteIndex = currentSlideIndex
+          if (savedStates && savedStates[absoluteIndex]?.objects) {
+            const tmpCanvas = await canvasGenerator.createCanvasFromSavedState(savedStates[absoluteIndex])
+            await this.addFabricCanvasToPDF(tmpCanvas, currentSlideIndex)
+          } else {
+            const imageCanvas = await canvasGenerator.createSlideCanvas(
+              currentImageSlide, 
+              'image', 
+              null, 
+              currentSlideIndex, 
+              totalSlides
+            )
+            await this.addFabricCanvasToPDF(imageCanvas, currentSlideIndex)
+          }
           currentSlideIndex++
           imageIndex++
         }
       }
       
-      // Add end slide
+      // Add end slide (prefer saved state at last index)
       console.log('Generating end slide...')
-      const endCanvas = await canvasGenerator.createSlideCanvas(
-        carouselData.endSlide, 
-        'end', 
-        null, 
-        currentSlideIndex, 
-        totalSlides
-      )
-      await this.addFabricCanvasToPDF(endCanvas, currentSlideIndex, true)
+      if (savedStates && savedStates[currentSlideIndex]?.objects) {
+        const tmpCanvas = await canvasGenerator.createCanvasFromSavedState(savedStates[currentSlideIndex])
+        await this.addFabricCanvasToPDF(tmpCanvas, currentSlideIndex, true)
+      } else {
+        const endCanvas = await canvasGenerator.createSlideCanvas(
+          carouselData.endSlide, 
+          'end', 
+          null, 
+          currentSlideIndex, 
+          totalSlides
+        )
+        await this.addFabricCanvasToPDF(endCanvas, currentSlideIndex, true)
+      }
+
+      // If there are any additional saved states beyond totalSlides (custom slides), append them in order
+      if (savedStates) {
+        const extraIndices = Object.keys(savedStates)
+          .map(n => parseInt(n, 10))
+          .filter(n => Number.isInteger(n) && n >= totalSlides)
+          .sort((a, b) => a - b)
+        for (const idx of extraIndices) {
+          currentSlideIndex++
+          const tmpCanvas = await canvasGenerator.createCanvasFromSavedState(savedStates[idx])
+          await this.addFabricCanvasToPDF(tmpCanvas, currentSlideIndex)
+        }
+      }
       
       return this.pdf
     } catch (error) {

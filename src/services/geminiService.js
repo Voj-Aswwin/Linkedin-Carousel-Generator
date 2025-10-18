@@ -67,13 +67,13 @@ export const generateHeaderSlide = async (userContent) => {
       },
       "titleStyle": {
         "fontSize": 48-72,
-        "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins",
+        "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Andon",
         "color": "#hexcolor (high contrast)",
         "fontWeight": "bold" | "normal"
       },
       "subtitleStyle": {
         "fontSize": 20-32,
-        "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins",
+        "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Andon",
         "color": "#hexcolor (complementary to title)",
         "fontWeight": "normal" | "bold"
       },
@@ -220,13 +220,13 @@ export const generateHeaderSlideAdvanced = async (userContent, options = {}) => 
       },
       "titleStyle": {
         "fontSize": 48-72,
-        "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+        "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
         "color": "#hexcolor (high contrast, brand-aligned)",
         "fontWeight": "bold" | "normal"
       },
       "subtitleStyle": {
         "fontSize": 20-32,
-        "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+        "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
         "color": "#hexcolor (complementary to title, readable)",
         "fontWeight": "normal" | "bold"
       },
@@ -407,7 +407,7 @@ export const generateCarouselSlides = async (userContent) => {
     Generate a JSON object with the following structure:
     {
       "headerSlide": {
-        "title": "Compelling headline (max 8 words, action-oriented)",
+        "title": "Compelling headline (max 8 words, action-oriented). Use '\\n' for line breaks. Wrap words to be highlighted with asterisks (*word*).",
         "subtitle": "Supporting text (max 15 words)",
         "background": {
           "type": "gradient" | "solid" | "pattern",
@@ -417,13 +417,13 @@ export const generateCarouselSlides = async (userContent) => {
         },
         "titleStyle": {
           "fontSize": 80-100,
-          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
           "color": "#hexcolor",
           "fontWeight": "bold" | "normal"
         },
         "subtitleStyle": {
           "fontSize": 40-50,
-          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
           "color": "#hexcolor",
           "fontWeight": "normal" | "bold"
         },
@@ -444,13 +444,13 @@ export const generateCarouselSlides = async (userContent) => {
           },
           "titleStyle": {
             "fontSize": 50-70,
-            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
             "color": "#hexcolor",
             "fontWeight": "bold" | "normal"
           },
           "subtitleStyle": {
             "fontSize": 30-40,
-            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
             "color": "#hexcolor",
             "fontWeight": "normal" | "bold"
           },
@@ -481,19 +481,19 @@ export const generateCarouselSlides = async (userContent) => {
           },
           "titleStyle": {
             "fontSize": 60-80,
-            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
             "color": "#hexcolor",
             "fontWeight": "bold" | "normal"
           },
           "bulletStyle": {
             "fontSize": 30-40,
-            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
             "color": "#hexcolor",
             "fontWeight": "normal"
           },
           "paragraphStyle": {
             "fontSize": 24-32,
-            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
+            "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat" | "Andon",
             "color": "#hexcolor",
             "fontWeight": "normal"
           },
@@ -505,32 +505,8 @@ export const generateCarouselSlides = async (userContent) => {
         "title": "Call-to-action title (e.g., 'Ready to Get Started?')",
         "subtitle": "Compelling CTA message or contact information",
         "ctaText": "Specific action text (e.g., 'Contact Me', 'Learn More', 'Get Started')",
-        "background": {
-          "type": "gradient" | "solid" | "pattern",
-          "color1": "#hexcolor (same as info slides)",
-          "color2": "#hexcolor (same as info slides)",
-          "pattern": "dots" | "lines" | "geometric" | "none"
-        },
-        "titleStyle": {
-          "fontSize": 60-80,
-          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
-          "color": "#hexcolor",
-          "fontWeight": "bold" | "normal"
-        },
-        "subtitleStyle": {
-          "fontSize": 30-40,
-          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
-          "color": "#hexcolor",
-          "fontWeight": "normal" | "bold"
-        },
-        "ctaStyle": {
-          "fontSize": 35-45,
-          "fontFamily": "Arial" | "Helvetica" | "Georgia" | "Times New Roman" | "Inter" | "Poppins" | "Montserrat",
-          "color": "#hexcolor",
-          "fontWeight": "bold"
-        },
-        "accentColor": "#hexcolor (same as other slides)",
-        "layout": "centered" | "left-aligned" | "right-aligned"
+        "imagePrompt": "A professional, high-quality image that visually represents the call to action (e.g., a contact icon, a 'learn more' graphic). Keep it clean and simple.",
+        "theme": "Use the same theme as the header slide (background, styles, layout)"
       }
     }
     
@@ -594,6 +570,107 @@ export const generateCarouselSlides = async (userContent) => {
         // Validate required fields
         if (!parsedData.headerSlide || !parsedData.infoSlides) {
           throw new Error('Missing required fields in AI response')
+        }
+        
+        // If end slide should mimic header, copy properties
+        if (parsedData.endSlide && parsedData.endSlide.theme) {
+          const header = parsedData.headerSlide
+          parsedData.endSlide = {
+            ...parsedData.endSlide,
+            background: header.background,
+            titleStyle: header.titleStyle,
+            subtitleStyle: header.subtitleStyle,
+            accentColor: header.accentColor,
+            layout: header.layout,
+            ctaStyle: {
+              ...header.subtitleStyle,
+              fontWeight: 'bold',
+            }
+          }
+          delete parsedData.endSlide.theme
+        }
+        
+        // THEME ENFORCEMENT: apply unified theme to info and image slides
+        const THEME_BG = '#0F0F10'
+        const THEME_TEXT = '#fff4e2'
+        const THEME_ACCENT = '#F4B400'
+
+        // Normalize image slides to theme
+        if (parsedData.imageSlides && Array.isArray(parsedData.imageSlides)) {
+          parsedData.imageSlides.forEach(slide => {
+            slide.background = slide.background || { type: 'solid', color1: THEME_BG, color2: THEME_BG }
+            slide.background.type = 'solid'
+            slide.background.color1 = THEME_BG
+            slide.background.color2 = THEME_BG
+            slide.titleStyle = {
+              fontSize: (slide.titleStyle?.fontSize) || 60,
+              fontFamily: slide.titleStyle?.fontFamily || 'Inter',
+              color: THEME_TEXT,
+              fontWeight: slide.titleStyle?.fontWeight || 'bold'
+            }
+            slide.subtitleStyle = {
+              fontSize: (slide.subtitleStyle?.fontSize) || 28,
+              fontFamily: slide.subtitleStyle?.fontFamily || 'Inter',
+              color: THEME_TEXT,
+              fontWeight: slide.subtitleStyle?.fontWeight || 'normal'
+            }
+            slide.accentColor = THEME_ACCENT
+            slide.layout = slide.layout || 'centered'
+          })
+        }
+
+        // Normalize info slides to theme
+        if (parsedData.infoSlides && Array.isArray(parsedData.infoSlides)) {
+          parsedData.infoSlides.forEach(slide => {
+            slide.background = slide.background || { type: 'solid', color1: THEME_BG, color2: THEME_BG }
+            slide.background.type = 'solid'
+            slide.background.color1 = THEME_BG
+            slide.background.color2 = THEME_BG
+            slide.titleStyle = {
+              fontSize: (slide.titleStyle?.fontSize) || 80,
+              fontFamily: slide.titleStyle?.fontFamily || 'Inter',
+              color: THEME_TEXT,
+              fontWeight: slide.titleStyle?.fontWeight || 'bold'
+            }
+            slide.bulletStyle = {
+              fontSize: (slide.bulletStyle?.fontSize) || 30,
+              fontFamily: slide.bulletStyle?.fontFamily || 'Inter',
+              color: THEME_TEXT,
+              fontWeight: slide.bulletStyle?.fontWeight || 'normal'
+            }
+            slide.paragraphStyle = {
+              fontSize: (slide.paragraphStyle?.fontSize) || 24,
+              fontFamily: slide.paragraphStyle?.fontFamily || 'Inter',
+              color: THEME_TEXT,
+              fontWeight: slide.paragraphStyle?.fontWeight || 'normal'
+            }
+            slide.subheadingStyle = {
+              fontSize: (slide.subheadingStyle?.fontSize) || 32,
+              fontFamily: slide.subheadingStyle?.fontFamily || 'Inter',
+              color: THEME_TEXT,
+              fontWeight: slide.subheadingStyle?.fontWeight || 'bold'
+            }
+            slide.textStyle = {
+              fontSize: (slide.textStyle?.fontSize) || 20,
+              fontFamily: slide.textStyle?.fontFamily || 'Inter',
+              color: THEME_TEXT,
+              fontWeight: slide.textStyle?.fontWeight || 'normal'
+            }
+            slide.accentColor = THEME_ACCENT
+            slide.layout = slide.layout || 'left-aligned'
+          })
+        }
+
+        // Generate image for end slide if prompt exists
+        if (parsedData.endSlide && parsedData.endSlide.imagePrompt) {
+          console.log('Generating image for end slide...')
+          const generatedImage = await generateImageFromPrompt(parsedData.endSlide.imagePrompt)
+          if (generatedImage) {
+            parsedData.endSlide.generatedImage = generatedImage
+            console.log('End slide image generated successfully!')
+          } else {
+            console.warn('Failed to generate image for end slide')
+          }
         }
         
         // Generate images for all image slides

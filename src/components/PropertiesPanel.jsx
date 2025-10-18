@@ -190,6 +190,7 @@ const PropertiesPanel = ({
                   <option value="Helvetica">Helvetica</option>
                   <option value="Georgia">Georgia</option>
                   <option value="Times New Roman">Times New Roman</option>
+                  <option value="Andon">Andon</option>
                 </select>
               </div>
             </div>
