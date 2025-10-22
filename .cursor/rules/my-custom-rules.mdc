@@ -23,4 +23,5 @@ File Structure Rules
 Specific Instructions
 - Always go for the most simplistic solution. 
 - This is a basic MVP. SO Optimize for Speed and Quality over scale
+- When Developing Features, First Think like a User of the app and think what changes a user would want on the app. Then think like a developer on how to develop these features and bug fixes
 ---
