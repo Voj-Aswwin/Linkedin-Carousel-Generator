@@ -22,7 +22,7 @@ export class CanvasGenerator {
    * @param {number} selectedPhonePhoto - Index of selected phone photo
    * @returns {Promise<fabric.Canvas>} The generated canvas
    */
-  async createSlideCanvas(slideData, slideType, headerPicture = null, currentSlideIndex = 0, totalSlides = 1) {
+  async createSlideCanvas(slideData, slideType, headerPicture = null, currentSlideIndex = 0, totalSlides = 1, options = {}) {
     // Create a temporary canvas element
     const canvasElement = document.createElement('canvas')
     canvasElement.width = this.slideWidth
@@ -281,6 +281,8 @@ export class CanvasGenerator {
       })
     }
 
+    const brandText = (options.brandText && options.brandText.trim()) ? options.brandText.trim() : 'Liceria.Co'
+
     if (slideType === 'header') {
       // Set background color and add grid
       canvas.setBackgroundColor('#FBEFDB', canvas.renderAll.bind(canvas));
@@ -294,8 +296,8 @@ export class CanvasGenerator {
       }
       canvas.add(new fabric.Group(gridLines, { selectable: false, evented: false }));
 
-      // Add "Liceria.Co"
-      canvas.add(new fabric.Textbox('Liceria.Co', {
+      // Add brand label
+      canvas.add(new fabric.Textbox(brandText, {
         left: 80,
         top: 80,
         fontFamily: 'Inter',
@@ -435,7 +437,7 @@ export class CanvasGenerator {
 
       canvas.setBackgroundColor('#0F0F10', canvas.renderAll.bind(canvas))
       // Brand label
-      canvas.add(new fabric.Textbox('Liceria.Co', { left: 80, top: 80, fontFamily: 'Inter', fontSize: 32 * scaleFactor, fill: '#F4B400', fontWeight: 'bold', selectable: false }))
+      canvas.add(new fabric.Textbox(brandText, { left: 80, top: 80, fontFamily: 'Inter', fontSize: 32 * scaleFactor, fill: '#F4B400', fontWeight: 'bold', selectable: false }))
       // X pattern
       {
         const xGroup = []
@@ -741,7 +743,7 @@ export class CanvasGenerator {
       canvas.add(new fabric.Group(gridLinesEnd, { selectable: false, evented: false }))
 
       // Brand label top-left
-      canvas.add(new fabric.Textbox('Liceria.Co', {
+      canvas.add(new fabric.Textbox(brandText, {
         left: 80,
         top: 80,
         fontFamily: 'Inter',

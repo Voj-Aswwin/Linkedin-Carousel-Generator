@@ -50,6 +50,7 @@ function App() {
   const [draggedSlide, setDraggedSlide] = useState(null)
   const [dragOverIndex, setDragOverIndex] = useState(null)
   const [slideStates, setSlideStates] = useState({}) // Store slide states for persistence
+  const [linkedinHandle, setLinkedinHandle] = useState('')
   const canvasEditorRef = useRef(null)
 
   // Save the current slide state immediately (used before navigation/export)
@@ -723,7 +724,7 @@ function App() {
       console.log('Starting PDF generation...')
       
       // Export entire carousel as PDF using saved states
-      await pdfExportService.generateCarouselPDF(carouselData, headerPicture, { savedStates: slideStates })
+      await pdfExportService.generateCarouselPDF(carouselData, headerPicture, { savedStates: slideStates, brandText: linkedinHandle })
       pdfExportService.downloadPDF(filename)
       
       console.log('PDF exported successfully!')
@@ -779,6 +780,19 @@ function App() {
                 placeholder="Paste your LinkedIn post, blog content, or any text you want to convert into a carousel..."
               />
               
+              <div className="space-y-2 mt-3">
+                <label className="block text-sm font-medium text-gray-700">
+                  LinkedIn Handle
+                </label>
+                <input
+                  type="text"
+                  value={linkedinHandle}
+                  onChange={(e) => setLinkedinHandle(e.target.value)}
+                  placeholder="@yourhandle"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm p-2"
+                />
+              </div>
+
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
                   Header Slide Picture (Optional)
@@ -799,11 +813,11 @@ function App() {
               </div>
 
               
-              <div className="mt-4 flex items-center justify-between">
+              <div className="mt-4 flex flex-col items-stretch space-y-2">
                 <span className="text-sm text-gray-500">
                   {textInput.length} characters
                 </span>
-                <div className="flex space-x-2">
+                <div className="flex flex-col space-y-2 w-full">
                   <GenerateMockButton onClick={handleGenerateMock} />
                   <GenerateButton 
                     onClick={handleGenerate}
@@ -813,65 +827,12 @@ function App() {
                 </div>
               </div>
 
-              {/* Color Palette */}
-              <div className="mt-6">
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Color Palette</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex space-x-1">
-                    <div className="w-6 h-6 bg-blue-500 rounded"></div>
-                    <div className="w-6 h-6 bg-purple-500 rounded"></div>
-                  </div>
-                  <div className="flex space-x-1">
-                    <div className="w-6 h-6 bg-pink-500 rounded"></div>
-                    <div className="w-6 h-6 bg-purple-800 rounded"></div>
-                  </div>
-                  <div className="flex space-x-1">
-                    <div className="w-6 h-6 bg-green-600 rounded"></div>
-                    <div className="w-6 h-6 bg-green-300 rounded"></div>
-                  </div>
-                  <div className="flex space-x-1">
-                    <div className="w-6 h-6 bg-orange-500 rounded"></div>
-                    <div className="w-6 h-6 bg-red-500 rounded"></div>
-                  </div>
-                </div>
-              </div>
+              
             </div>
 
             {/* Features Preview - Show when no carouselData */}
             {!carouselData && (
-              <div className="space-y-6">
-                <div className="card">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">What You'll Get</h3>
-                  <div className="space-y-3">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-2 h-2 bg-primary-600 rounded-full"></div>
-                      <span className="text-gray-700">AI-generated header slide based on your content</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-2 h-2 bg-primary-600 rounded-full"></div>
-                      <span className="text-gray-700">Professional LinkedIn-optimized designs</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-2 h-2 bg-primary-600 rounded-full"></div>
-                      <span className="text-gray-700">Editable canvas with drag-and-drop interface</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="w-2 h-2 bg-primary-600 rounded-full"></div>
-                      <span className="text-gray-700">Export as high-quality images</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="card">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Tips</h3>
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <p>• Keep your text concise for better carousel generation</p>
-                    <p>• Include key points or statistics for data slides</p>
-                    <p>• Use clear headings to create better slide breaks</p>
-                    <p>• The AI will automatically format your content</p>
-                  </div>
-                </div>
-              </div>
+              <div className="space-y-6"></div>
             )}
           </div>
 
@@ -929,6 +890,7 @@ function App() {
                 currentSlideIndex={currentSlideIndex}
                 totalSlides={getTotalSlides()}
                 headerPicture={headerPicture}
+                linkedinHandle={linkedinHandle}
                 onSlideUpdate={handleSlideUpdate}
                 onSelectedObjectChange={setSelectedObject}
                 onUndoHistoryChange={setUndoHistory}

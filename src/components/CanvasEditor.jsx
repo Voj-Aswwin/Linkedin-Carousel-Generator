@@ -9,6 +9,7 @@ const CanvasEditor = forwardRef(({
   currentSlideIndex = 0,
   totalSlides = 1,
   headerPicture = null,
+  linkedinHandle = '',
   onSlideUpdate,
   onSelectedObjectChange,
   onUndoHistoryChange,
@@ -31,6 +32,7 @@ const CanvasEditor = forwardRef(({
   const [forceUpdate, setForceUpdate] = useState(0) // Counter to force re-renders
   const updateTimeoutRef = useRef(null)
   const previousSlideIndexRef = useRef(currentSlideIndex)
+  const brandText = (linkedinHandle && linkedinHandle.trim()) ? linkedinHandle.trim() : 'Liceria.Co'
 
 
   // Handle keyboard events
@@ -617,8 +619,8 @@ const CanvasEditor = forwardRef(({
         }
         canvas.add(new fabric.Group(gridLines, { selectable: false, evented: false }));
   
-        // Add "Liceria.Co"
-        canvas.add(new fabric.Textbox('Liceria.Co', {
+        // Add brand label
+        canvas.add(new fabric.Textbox(brandText, {
           left: 80 * scaleFactor,
           top: 80 * scaleFactor,
           fontFamily: 'Inter',
@@ -776,7 +778,7 @@ const CanvasEditor = forwardRef(({
         canvas.setBackgroundColor('#0F0F10', canvas.renderAll.bind(canvas))
         
         // Brand label (top-left)
-        canvas.add(new fabric.Textbox('Liceria.Co', {
+        canvas.add(new fabric.Textbox(brandText, {
           left: 80 * scaleFactor,
           top: 80 * scaleFactor,
           fontFamily: 'Inter',
@@ -1662,7 +1664,7 @@ const CanvasEditor = forwardRef(({
         canvas.add(new fabric.Group(gridLinesEnd, { selectable: false, evented: false }))
 
         // Brand label top-left
-        canvas.add(new fabric.Textbox('Liceria.Co', {
+        canvas.add(new fabric.Textbox(brandText, {
           left: 80 * scaleFactor,
           top: 80 * scaleFactor,
           fontFamily: 'Inter',

@@ -7,7 +7,7 @@ const GenerateButton = ({ onClick, isLoading, disabled }) => {
       onClick={onClick}
       disabled={disabled || isLoading}
       className={`
-        btn-primary flex items-center space-x-2
+        btn-primary w-full flex items-center justify-center space-x-2 whitespace-nowrap
         ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
         ${isLoading ? 'cursor-wait' : ''}
       `}

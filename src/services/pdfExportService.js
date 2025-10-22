@@ -153,7 +153,8 @@ class PDFExportService {
           'header', 
           headerPicture, 
           currentSlideIndex, 
-          totalSlides
+          totalSlides,
+          { brandText: options.brandText || '' }
         )
         await this.addFabricCanvasToPDF(headerCanvas, currentSlideIndex)
       }
@@ -182,7 +183,8 @@ class PDFExportService {
               'info', 
               null, 
               currentSlideIndex, 
-              totalSlides
+              totalSlides,
+              { brandText: options.brandText || '' }
             )
             await this.addFabricCanvasToPDF(infoCanvas, currentSlideIndex)
           }
@@ -207,7 +209,8 @@ class PDFExportService {
               'image', 
               null, 
               currentSlideIndex, 
-              totalSlides
+              totalSlides,
+              { brandText: options.brandText || '' }
             )
             await this.addFabricCanvasToPDF(imageCanvas, currentSlideIndex)
           }
@@ -227,7 +230,8 @@ class PDFExportService {
           'end', 
           null, 
           currentSlideIndex, 
-          totalSlides
+          totalSlides,
+          { brandText: options.brandText || '' }
         )
         await this.addFabricCanvasToPDF(endCanvas, currentSlideIndex, true)
       }
