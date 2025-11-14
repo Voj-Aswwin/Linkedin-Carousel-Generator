@@ -290,97 +290,112 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-indigo-50/20">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <div className="flex items-center space-x-3">
-              <div className="bg-primary-600 p-2 rounded-lg">
-                <Sparkles className="h-6 w-6 text-white" />
+        <header className="bg-white/80 backdrop-blur-sm shadow-sm border-b border-gray-200 sticky top-0 z-50">
+          <div className="max-w-[1920px] mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between py-4">
+              <div className="flex items-center space-x-4">
+                <div className="bg-gradient-to-br from-primary-600 to-primary-700 p-2.5 rounded-xl shadow-md">
+                  <Sparkles className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900 tracking-tight">LinkedIn Carousel Generator</h1>
+                  <p className="text-sm text-gray-600 mt-0.5">Transform your content into engaging carousel slides</p>
+                </div>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">LinkedIn Carousel Generator</h1>
-                <p className="text-gray-600">Transform your text posts into engaging carousel slides</p>
-              </div>
+              {(carouselData || customSlides.length > 0) && (
+                <div className="hidden md:flex items-center space-x-2 text-sm text-gray-600">
+                  <span className="px-3 py-1.5 bg-primary-50 text-primary-700 rounded-lg font-medium">
+                    {getTotalSlides()} {getTotalSlides() === 1 ? 'Slide' : 'Slides'}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </header>
 
         {/* Main Content */}
-        <main className="w-full px-2 sm:px-4 lg:px-6 py-6">
-          <div className="grid grid-cols-1 lg:grid-cols-20 gap-4">
+        <main className="w-full px-3 sm:px-4 lg:px-6 py-6 max-w-[1920px] mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-20 gap-4 lg:gap-5">
             {/* Left Column - Carousel Generator */}
-            <CarouselGenerator
-              textInput={textInput}
-              onTextInputChange={setTextInput}
-              onGenerate={handleGenerate}
-              onGenerateMock={handleGenerateMock}
-              isGenerating={isGenerating}
-              linkedinHandle={linkedinHandle}
-              onLinkedinHandleChange={setLinkedinHandle}
-              headerPicture={headerPicture}
-              onHeaderPictureChange={setHeaderPicture}
-            />
+            <div className="lg:col-span-3">
+              <CarouselGenerator
+                textInput={textInput}
+                onTextInputChange={setTextInput}
+                onGenerate={handleGenerate}
+                onGenerateMock={handleGenerateMock}
+                isGenerating={isGenerating}
+                linkedinHandle={linkedinHandle}
+                onLinkedinHandleChange={setLinkedinHandle}
+                headerPicture={headerPicture}
+                onHeaderPictureChange={setHeaderPicture}
+              />
+            </div>
 
             {/* Middle Column - Canvas */}
-            <CanvasSection
-              slideData={getCurrentSlide()}
-              slideType={getSlideType()}
-              currentSlideIndex={currentSlideIndex}
-              totalSlides={getTotalSlides()}
-              headerPicture={headerPicture}
-              linkedinHandle={linkedinHandle}
-              onSlideUpdate={handleSlideUpdate}
-              onSelectedObjectChange={setSelectedObject}
-              onUndoHistoryChange={setUndoHistory}
-              onRedoHistoryChange={setRedoHistory}
-              onPhoneFramePhotosChange={setPhoneFramePhotos}
-              onSelectedPhonePhotoChange={setSelectedPhonePhoto}
-              savedStates={slideStates}
-              onAddBlankSlide={addBlankSlide}
-              onExportPDF={handleExportPDF}
-              isExportingPDF={isExportingPDF}
-              onPreviousSlide={handlePreviousSlide}
-              onNextSlide={handleNextSlide}
-              canvasEditorRef={canvasEditorRef}
-            />
+            <div className="lg:col-span-10">
+              <CanvasSection
+                slideData={getCurrentSlide()}
+                slideType={getSlideType()}
+                currentSlideIndex={currentSlideIndex}
+                totalSlides={getTotalSlides()}
+                headerPicture={headerPicture}
+                linkedinHandle={linkedinHandle}
+                onSlideUpdate={handleSlideUpdate}
+                onSelectedObjectChange={setSelectedObject}
+                onUndoHistoryChange={setUndoHistory}
+                onRedoHistoryChange={setRedoHistory}
+                onPhoneFramePhotosChange={setPhoneFramePhotos}
+                onSelectedPhonePhotoChange={setSelectedPhonePhoto}
+                savedStates={slideStates}
+                onAddBlankSlide={addBlankSlide}
+                onExportPDF={handleExportPDF}
+                isExportingPDF={isExportingPDF}
+                onPreviousSlide={handlePreviousSlide}
+                onNextSlide={handleNextSlide}
+                canvasEditorRef={canvasEditorRef}
+              />
+            </div>
 
             {/* Right Column - Tool Panel */}
             <div className="lg:col-span-3">
-              <div className="card h-[calc(100vh-160px)] overflow-y-auto">
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 sticky top-0 bg-white z-10 pb-2">TOOLS & ELEMENTS</h3>
-                <ToolPanel 
-                  onAddText={() => {
-                    canvasEditorRef.current?.addText()
-                  }}
-                  onAddShape={(type) => {
-                    canvasEditorRef.current?.addShape(type)
-                  }}
-                  onImageUpload={(event) => {
-                    canvasEditorRef.current?.handleImageUpload(event)
-                  }}
-                  onAddPhoneFrame={() => {
-                    canvasEditorRef.current?.addPhoneFrame()
-                  }}
-                  onPhoneFramePhotoUpload={(event) => {
-                    canvasEditorRef.current?.handlePhoneFramePhotoUpload(event)
-                  }}
-                  phoneFramePhotos={phoneFramePhotos}
-                  selectedPhonePhoto={selectedPhonePhoto}
-                  onSetSelectedPhonePhoto={setSelectedPhonePhoto}
-                  onClearPhonePhotos={() => setPhoneFramePhotos([])}
-                  onUndo={() => {
-                    canvasEditorRef.current?.handleUndo()
-                  }}
-                  onRedo={() => {
-                    canvasEditorRef.current?.handleRedo()
-                  }}
-                  onResetCanvas={() => {
-                    canvasEditorRef.current?.resetCanvas()
-                  }}
-                  undoHistory={undoHistory}
-                  redoHistory={redoHistory}
-                />
+              <div className="sidebar-panel h-[calc(100vh-140px)] overflow-y-auto custom-scrollbar">
+                <div className="p-5">
+                  <h3 className="section-title">Tools & Elements</h3>
+                  <ToolPanel 
+                    onAddText={() => {
+                      canvasEditorRef.current?.addText()
+                    }}
+                    onAddShape={(type) => {
+                      canvasEditorRef.current?.addShape(type)
+                    }}
+                    onImageUpload={(event) => {
+                      canvasEditorRef.current?.handleImageUpload(event)
+                    }}
+                    onAddPhoneFrame={() => {
+                      canvasEditorRef.current?.addPhoneFrame()
+                    }}
+                    onPhoneFramePhotoUpload={(event) => {
+                      canvasEditorRef.current?.handlePhoneFramePhotoUpload(event)
+                    }}
+                    phoneFramePhotos={phoneFramePhotos}
+                    selectedPhonePhoto={selectedPhonePhoto}
+                    onSetSelectedPhonePhoto={setSelectedPhonePhoto}
+                    onClearPhonePhotos={() => setPhoneFramePhotos([])}
+                    onUndo={() => {
+                      canvasEditorRef.current?.handleUndo()
+                    }}
+                    onRedo={() => {
+                      canvasEditorRef.current?.handleRedo()
+                    }}
+                    onResetCanvas={() => {
+                      canvasEditorRef.current?.resetCanvas()
+                    }}
+                    undoHistory={undoHistory}
+                    redoHistory={redoHistory}
+                  />
+                </div>
               </div>
             </div>
 
@@ -409,27 +424,29 @@ function App() {
 
           {/* Slide Manager - Always show when there are slides or custom slides */}
           {(carouselData || customSlides.length > 0) && (
-            <SlideManager
-              totalSlides={getTotalSlides()}
-              currentSlideIndex={currentSlideIndex}
-              carouselData={carouselData}
-              customSlides={customSlides}
-              selectedSlides={selectedSlides}
-              draggedSlide={draggedSlide}
-              dragOverIndex={dragOverIndex}
-              onSlideClick={handleSlideClick}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onAddBlankSlide={addBlankSlide}
-              onDuplicateSlide={handleDuplicateSlide}
-              onDeleteSlide={handleDeleteSlide}
-              onToggleSelection={toggleSlideSelection}
-              onSelectAll={() => selectAllSlides(getTotalSlides())}
-              onClearSelection={clearSelection}
-              onDeleteSelected={handleDeleteSelectedSlides}
-            />
+            <div className="mt-6">
+              <SlideManager
+                totalSlides={getTotalSlides()}
+                currentSlideIndex={currentSlideIndex}
+                carouselData={carouselData}
+                customSlides={customSlides}
+                selectedSlides={selectedSlides}
+                draggedSlide={draggedSlide}
+                dragOverIndex={dragOverIndex}
+                onSlideClick={handleSlideClick}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onAddBlankSlide={addBlankSlide}
+                onDuplicateSlide={handleDuplicateSlide}
+                onDeleteSlide={handleDeleteSlide}
+                onToggleSelection={toggleSlideSelection}
+                onSelectAll={() => selectAllSlides(getTotalSlides())}
+                onClearSelection={clearSelection}
+                onDeleteSelected={handleDeleteSelectedSlides}
+              />
+            </div>
           )}
         </main>
       </div>
