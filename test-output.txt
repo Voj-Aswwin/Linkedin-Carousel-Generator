@@ -1,0 +1,4 @@
+[ 'role', 'content', 'refusal', 'reasoning', 'images' ]
+NO CONTENT
+IMAGES: object
+{"role":"assistant","content":null,"refusal":null,"reasoning":null,"images":[{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABAAAAAMACAIAAAA12IJaAAD+eWNhQlgAAP55anVtYgAAAB5qdW1kYzJwYQARABCAAACqADibcQNjMnBhAAAA/lNqdW1iAAAAR2p1bWRjMm1hABEAEIAAAKoAOJtxA3VybjpjMnBhOjNjOWQxMmJjLTM3MjMtNDI1Yy1iMDhlLWRhOTNhMjYyZTU1NQAAAMIHanVtYgAAAClqdW1kYzJhcwARABCAAACqADibcQNjMnBhLmFzc2VydGlvbnMAAAC+6Wp1bWIAAABGanVtZEDLDDK7ikidpwsq1vR/Q2kTYzJwYS50aHVtYm5haWwuY2xhaW0AAAAAGGMyc2iwF
